@@ -1,0 +1,4 @@
+# Phase 1: Minimal Data Ingestion & Testing Dependencies
+pandas>=2.0.0
+pyarrow>=14.0.0
+pytest>=7.0.0
