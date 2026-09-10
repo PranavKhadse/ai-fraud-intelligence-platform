@@ -37,7 +37,7 @@
 - [x] Architected modular, reproducible EDA pipeline under `ml/eda/` (`overview`, `class_imbalance`, `temporal`, `amount`, `merchant`, `geography`, `behavioral_signals`, `correlations`, `visualize`, `report`, `run_eda`).
 - [x] Analyzed 1.85M transactions across independent Train (70%), Validation (15%), and Test (15% OOT) partitions without data modification or lookahead leakage.
 - [x] Verified class imbalance dynamics: 0.521% overall fraud rate (1:172 ratio in Train). Documented why accuracy (99.4%) is deceptive and established PR-AUC / Cost-Weighted Loss as primary metrics.
-- [x] Discovered key diurnal patterns: Nighttime fraud rate surges to **{peak_rate}%** between 22:00 and 03:00 (over 4× daytime baseline).
+- [x] Discovered key diurnal patterns: Nighttime fraud rate surges to **2.88%** at 22:00 between 22:00 and 03:00 (over 4× daytime baseline).
 - [x] Analyzed monetary distribution: Legitimate median is **$47.31** vs. fraudulent median of **$367.61** (7.8× difference). Transactions >$500 exhibit >10% fraud rate.
 - [x] Uncovered merchant category risk concentration: `shopping_net`, `misc_net`, `grocery_pos` account for >65% of fraudulent spend.
 - [x] Computed cardholder-to-merchant Haversine distance distributions.
