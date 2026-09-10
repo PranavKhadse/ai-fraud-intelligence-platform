@@ -1,4 +1,6 @@
-# Phase 1: Minimal Data Ingestion & Testing Dependencies
+# Phase 1 & 2: Data Ingestion, EDA & Testing Dependencies
 pandas>=2.0.0
 pyarrow>=14.0.0
 pytest>=7.0.0
+matplotlib>=3.7.0
+scipy>=1.10.0
