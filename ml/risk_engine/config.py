@@ -14,7 +14,7 @@ IMPORTANT:
 from enum import Enum
 from dataclasses import dataclass
 import math
-from typing import Any
+from typing import Dict, Any
 
 
 class DecisionAction(str, Enum):
@@ -111,3 +111,71 @@ class DecisionPolicyConfig:
             raise ValueError(
                 f"review_threshold ({r_val}) cannot exceed block_threshold ({b_val})."
             )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert configuration to a clean JSON-serializable dictionary.
+
+        Returns:
+            Dict[str, Any]: Serialized configuration mapping.
+        """
+        return {
+            "policy_mode": self.policy_mode.value,
+            "review_threshold": round(float(self.review_threshold), 6),
+            "block_threshold": round(float(self.block_threshold), 6),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DecisionPolicyConfig":
+        """
+        Create a validated DecisionPolicyConfig from a dictionary.
+
+        Supports string enum conversion for policy_mode (e.g. 'TRI_TIER', 'BINARY_AUTO').
+        Rejects unknown keys, non-dict inputs, and invalid threshold values.
+
+        Args:
+            data: Dictionary containing configuration keys.
+
+        Returns:
+            DecisionPolicyConfig: Validated immutable configuration instance.
+
+        Raises:
+            TypeError: If data is not a dict or fields have invalid types.
+            ValueError: If unknown keys are present or threshold values/order are invalid.
+        """
+        if not isinstance(data, dict):
+            raise TypeError(f"data must be a dict, got {type(data).__name__}")
+
+        allowed_keys = {"policy_mode", "review_threshold", "block_threshold"}
+        extra_keys = set(data.keys()) - allowed_keys
+        if extra_keys:
+            raise ValueError(
+                f"Unknown configuration key(s): {sorted(extra_keys)}. Allowed keys: {sorted(allowed_keys)}"
+            )
+
+        kwargs: Dict[str, Any] = {}
+
+        if "policy_mode" in data:
+            mode_val = data["policy_mode"]
+            if isinstance(mode_val, str):
+                try:
+                    kwargs["policy_mode"] = PolicyMode(mode_val)
+                except ValueError:
+                    valid_modes = [m.value for m in PolicyMode]
+                    raise ValueError(
+                        f"Invalid policy_mode '{mode_val}'. Allowed modes: {valid_modes}"
+                    )
+            elif isinstance(mode_val, PolicyMode):
+                kwargs["policy_mode"] = mode_val
+            else:
+                raise TypeError(
+                    f"policy_mode must be a PolicyMode enum or str, got {type(mode_val).__name__}"
+                )
+
+        if "review_threshold" in data:
+            kwargs["review_threshold"] = data["review_threshold"]
+
+        if "block_threshold" in data:
+            kwargs["block_threshold"] = data["block_threshold"]
+
+        return cls(**kwargs)

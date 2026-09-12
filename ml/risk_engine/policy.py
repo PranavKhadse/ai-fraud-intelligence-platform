@@ -5,8 +5,9 @@ Evaluates raw model ranking scores against configured decision policies to deter
 the operational transaction action (APPROVE, REVIEW, or BLOCK).
 """
 
-from dataclasses import dataclass
-from typing import Dict, Any, List, Optional, Union
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Dict, Any, List, Optional, Union, Mapping
 import numpy as np
 
 from ml.risk_engine.config import (
@@ -34,6 +35,8 @@ class DecisionResult:
         model_score: Raw continuous model ranking score in [0.0, 1.0].
         policy_mode: Policy mode used during evaluation (TRI_TIER or BINARY_AUTO).
         reason: Human-readable explanation of the policy decision boundary.
+        thresholds_applied: Exact raw score threshold boundaries applied during evaluation (read-only mapping).
+        model_version: Provenance version of the champion model artifact if available.
     """
     action: DecisionAction
     risk_score: int
@@ -41,9 +44,11 @@ class DecisionResult:
     model_score: float
     policy_mode: PolicyMode
     reason: str
+    thresholds_applied: Mapping[str, float] = field(default_factory=dict)
+    model_version: Optional[str] = None
 
     def __post_init__(self) -> None:
-        """Defensive validation of result fields."""
+        """Defensive validation of result fields and enforcement of deep immutability."""
         if not isinstance(self.action, DecisionAction):
             raise TypeError(f"action must be a DecisionAction enum, got {type(self.action).__name__}")
         if not isinstance(self.risk_score, int) or isinstance(self.risk_score, bool):
@@ -58,6 +63,15 @@ class DecisionResult:
             raise TypeError(f"policy_mode must be a PolicyMode enum, got {type(self.policy_mode).__name__}")
         if not isinstance(self.reason, str):
             raise TypeError(f"reason must be a string, got {type(self.reason).__name__}")
+        if not isinstance(self.thresholds_applied, (dict, MappingProxyType, Mapping)):
+            raise TypeError(f"thresholds_applied must be a mapping, got {type(self.thresholds_applied).__name__}")
+        if self.model_version is not None and not isinstance(self.model_version, str):
+            raise TypeError(f"model_version must be a str or None, got {type(self.model_version).__name__}")
+
+        # Enforce deep immutability on thresholds_applied via read-only MappingProxyType
+        object.__setattr__(
+            self, "thresholds_applied", MappingProxyType(dict(self.thresholds_applied))
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert decision result to a clean JSON-serializable dictionary."""
@@ -68,6 +82,10 @@ class DecisionResult:
             "model_score": round(float(self.model_score), 6),
             "policy_mode": self.policy_mode.value,
             "reason": self.reason,
+            "thresholds_applied": {
+                k: round(float(v), 6) for k, v in self.thresholds_applied.items()
+            },
+            "model_version": self.model_version,
         }
 
 
@@ -77,12 +95,17 @@ class DecisionPolicyEngine:
     configured threshold policies (TRI_TIER or BINARY_AUTO).
     """
 
-    def __init__(self, config: Optional[DecisionPolicyConfig] = None) -> None:
+    def __init__(
+        self,
+        config: Optional[DecisionPolicyConfig] = None,
+        model_version: Optional[str] = None,
+    ) -> None:
         """
         Initialize the policy engine with a validated policy configuration.
 
         Args:
             config: DecisionPolicyConfig instance. If None, default configuration is used.
+            model_version: Optional model version string recorded for decision provenance.
         """
         if config is None:
             config = DecisionPolicyConfig()
@@ -91,11 +114,17 @@ class DecisionPolicyEngine:
                 f"config must be an instance of DecisionPolicyConfig, got {type(config).__name__}"
             )
         self._config = config
+        self._model_version = str(model_version).strip() if model_version is not None else None
 
     @property
     def config(self) -> DecisionPolicyConfig:
         """Return the immutable policy configuration."""
         return self._config
+
+    @property
+    def model_version(self) -> Optional[str]:
+        """Return the model version string used for provenance."""
+        return self._model_version
 
     def evaluate(self, model_score: Union[float, int, np.floating, np.integer]) -> DecisionResult:
         """
@@ -114,7 +143,7 @@ class DecisionPolicyEngine:
             model_score: Raw model ranking score in [0.0, 1.0].
 
         Returns:
-            DecisionResult: Immutable evaluation outcome.
+            DecisionResult: Immutable evaluation outcome with full decision provenance.
 
         Raises:
             TypeError: If model_score is boolean or non-numeric.
@@ -128,6 +157,11 @@ class DecisionPolicyEngine:
         mode = self._config.policy_mode
         b_thresh = self._config.block_threshold
         r_thresh = self._config.review_threshold
+
+        thresholds_applied = {
+            "review_threshold": r_thresh,
+            "block_threshold": b_thresh,
+        }
 
         if mode == PolicyMode.TRI_TIER:
             if score_val >= b_thresh:
@@ -144,10 +178,16 @@ class DecisionPolicyEngine:
                 )
             else:
                 action = DecisionAction.APPROVE
-                reason = (
-                    f"Model score ({score_val:.4f}) is below review threshold ({r_thresh:.4f}). "
-                    f"Action: APPROVE."
-                )
+                if r_thresh == b_thresh:
+                    reason = (
+                        f"Model score ({score_val:.4f}) is below review/block threshold ({b_thresh:.4f}) "
+                        f"(zero-width review band). Action: APPROVE."
+                    )
+                else:
+                    reason = (
+                        f"Model score ({score_val:.4f}) is below review threshold ({r_thresh:.4f}). "
+                        f"Action: APPROVE."
+                    )
         elif mode == PolicyMode.BINARY_AUTO:
             if score_val >= b_thresh:
                 action = DecisionAction.BLOCK
@@ -171,6 +211,8 @@ class DecisionPolicyEngine:
             model_score=score_val,
             policy_mode=mode,
             reason=reason,
+            thresholds_applied=thresholds_applied,
+            model_version=self._model_version,
         )
 
     def evaluate_batch(self, model_scores: np.ndarray) -> List[DecisionResult]:

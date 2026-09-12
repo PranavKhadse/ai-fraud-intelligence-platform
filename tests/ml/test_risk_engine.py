@@ -1,13 +1,15 @@
 """
-Automated Unit Tests for Phase 6 Increment 1: Risk Engine Normalization & Decision Policy Foundation.
+Automated Unit Tests for Phase 6 Increment 1 & 3: Risk Engine Normalization & Hardened Decision Policy.
 
 Validates:
-1. DecisionPolicyConfig: Defaults, validation of bounds, type safety, boolean rejection, ordering, immutability.
+1. DecisionPolicyConfig: Defaults, validation of bounds, type safety, boolean rejection, ordering, immutability,
+   to_dict serialization, from_dict parsing, unknown keys rejection, string enum parsing.
 2. normalize_model_score: Scalar normalization, exact boundary rounding, strict range checking, error handling.
 3. normalize_model_scores: Vectorized normalization, shape/order preservation, dtype validation, error handling.
 4. risk_tier_from_score: Exact tier boundaries (0, 34, 35, 59, 60, 77, 78, 100), type checking, error handling.
-5. DecisionPolicyEngine: Policy routing under TRI_TIER and BINARY_AUTO modes, threshold inclusivity, batch evaluation.
-6. DecisionResult: Immutability, field integrity, JSON serialization via to_dict().
+5. DecisionPolicyEngine: Policy routing under TRI_TIER and BINARY_AUTO modes, threshold inclusivity, zero-width review band,
+   batch evaluation, decision provenance (thresholds_applied, model_version).
+6. DecisionResult: Immutability, field integrity, provenance fields, JSON serialization via to_dict().
 """
 
 import math
@@ -36,7 +38,7 @@ from ml.risk_engine.policy import (
 # =====================================================================
 
 class TestDecisionPolicyConfig:
-    """Test suite for DecisionPolicyConfig creation, validation, and immutability."""
+    """Test suite for DecisionPolicyConfig creation, validation, immutability, and serialization."""
 
     def test_default_configuration(self) -> None:
         """Verify default configuration parameters reflect Phase 5 cost-optimal baseline."""
@@ -85,7 +87,7 @@ class TestDecisionPolicyConfig:
             DecisionPolicyConfig(review_threshold=0.85, block_threshold=0.75)
 
     def test_equal_thresholds_allowed(self) -> None:
-        """Verify review_threshold == block_threshold is allowed."""
+        """Verify review_threshold == block_threshold is allowed (zero-width review band)."""
         config = DecisionPolicyConfig(review_threshold=0.78, block_threshold=0.78)
         assert config.review_threshold == 0.78
         assert config.block_threshold == 0.78
@@ -105,6 +107,53 @@ class TestDecisionPolicyConfig:
             DecisionPolicyConfig(review_threshold=bool_val, block_threshold=0.8)  # type: ignore
         with pytest.raises(TypeError, match="cannot be a boolean value"):
             DecisionPolicyConfig(review_threshold=0.3, block_threshold=bool_val)  # type: ignore
+
+    def test_to_dict_serialization(self) -> None:
+        """Verify to_dict produces clean JSON-serializable dictionary."""
+        config = DecisionPolicyConfig(
+            policy_mode=PolicyMode.TRI_TIER,
+            review_threshold=0.35,
+            block_threshold=0.78,
+        )
+        d = config.to_dict()
+        assert d == {
+            "policy_mode": "TRI_TIER",
+            "review_threshold": 0.35,
+            "block_threshold": 0.78,
+        }
+
+    def test_from_dict_roundtrip(self) -> None:
+        """Verify from_dict reconstitutes identical configuration."""
+        original = DecisionPolicyConfig(
+            policy_mode=PolicyMode.BINARY_AUTO,
+            review_threshold=0.15,
+            block_threshold=0.85,
+        )
+        reconstituted = DecisionPolicyConfig.from_dict(original.to_dict())
+        assert reconstituted == original
+
+    def test_from_dict_string_enum_parsing(self) -> None:
+        """Verify from_dict parses string enum representations."""
+        config1 = DecisionPolicyConfig.from_dict({"policy_mode": "BINARY_AUTO"})
+        assert config1.policy_mode == PolicyMode.BINARY_AUTO
+
+        config2 = DecisionPolicyConfig.from_dict({"policy_mode": "TRI_TIER"})
+        assert config2.policy_mode == PolicyMode.TRI_TIER
+
+    def test_from_dict_unknown_keys_rejection(self) -> None:
+        """Verify from_dict rejects unexpected dictionary keys."""
+        with pytest.raises(ValueError, match="Unknown configuration key"):
+            DecisionPolicyConfig.from_dict({"invalid_key": 123})
+
+    def test_from_dict_non_dict_rejection(self) -> None:
+        """Verify from_dict rejects non-dict inputs."""
+        with pytest.raises(TypeError, match="data must be a dict"):
+            DecisionPolicyConfig.from_dict(["policy_mode", "TRI_TIER"])  # type: ignore
+
+    def test_from_dict_invalid_string_enum_rejection(self) -> None:
+        """Verify from_dict rejects invalid string mode values."""
+        with pytest.raises(ValueError, match="Invalid policy_mode"):
+            DecisionPolicyConfig.from_dict({"policy_mode": "INVALID_MODE"})
 
 
 # =====================================================================
@@ -286,6 +335,7 @@ class TestDecisionPolicyEngine:
         assert engine.config.policy_mode == PolicyMode.TRI_TIER
         assert engine.config.review_threshold == 0.35
         assert engine.config.block_threshold == 0.78
+        assert engine.model_version is None
 
     def test_invalid_config_type(self) -> None:
         """Verify passing an invalid config type raises TypeError."""
@@ -314,13 +364,15 @@ class TestDecisionPolicyEngine:
         expected_tier: RiskTier,
     ) -> None:
         """Verify complete tri-tier decision routing at all critical threshold points."""
-        engine = DecisionPolicyEngine()
+        engine = DecisionPolicyEngine(model_version="1.0.0")
         res = engine.evaluate(model_score)
         assert res.action == expected_action
         assert res.risk_score == expected_risk_score
         assert res.risk_tier == expected_tier
         assert res.model_score == model_score
         assert res.policy_mode == PolicyMode.TRI_TIER
+        assert res.model_version == "1.0.0"
+        assert res.thresholds_applied == {"review_threshold": 0.35, "block_threshold": 0.78}
         assert isinstance(res.reason, str) and len(res.reason) > 0
 
     @pytest.mark.parametrize(
@@ -343,6 +395,21 @@ class TestDecisionPolicyEngine:
         assert res.action == expected_action
         assert res.policy_mode == PolicyMode.BINARY_AUTO
 
+    def test_zero_width_review_band(self) -> None:
+        """Verify routing when review_threshold == block_threshold (zero-width review band)."""
+        config = DecisionPolicyConfig(
+            policy_mode=PolicyMode.TRI_TIER,
+            review_threshold=0.78,
+            block_threshold=0.78,
+        )
+        engine = DecisionPolicyEngine(config=config)
+        res_below = engine.evaluate(0.779)
+        assert res_below.action == DecisionAction.APPROVE
+        assert "zero-width review band" in res_below.reason
+
+        res_at = engine.evaluate(0.78)
+        assert res_at.action == DecisionAction.BLOCK
+
     def test_custom_thresholds_routing(self) -> None:
         """Verify routing with custom thresholds."""
         config = DecisionPolicyConfig(
@@ -358,13 +425,16 @@ class TestDecisionPolicyEngine:
 
     def test_batch_evaluation(self) -> None:
         """Verify batch evaluation preserves ordering and outputs."""
-        engine = DecisionPolicyEngine()
+        engine = DecisionPolicyEngine(model_version="1.0.0")
         scores = np.array([0.10, 0.40, 0.85], dtype=np.float64)
         results = engine.evaluate_batch(scores)
         assert len(results) == 3
         assert results[0].action == DecisionAction.APPROVE
         assert results[1].action == DecisionAction.REVIEW
         assert results[2].action == DecisionAction.BLOCK
+        for r in results:
+            assert r.model_version == "1.0.0"
+            assert r.thresholds_applied == {"review_threshold": 0.35, "block_threshold": 0.78}
 
 
 # =====================================================================
@@ -372,18 +442,63 @@ class TestDecisionPolicyEngine:
 # =====================================================================
 
 class TestDecisionResult:
-    """Test suite for DecisionResult dataclass immutability and serialization."""
+    """Test suite for DecisionResult dataclass deep immutability, mapping compatibility, and serialization."""
 
     def test_result_immutability(self) -> None:
-        """Verify DecisionResult fields cannot be mutated."""
+        """Verify DecisionResult fields and nested mapping cannot be mutated."""
         engine = DecisionPolicyEngine()
         res = engine.evaluate(0.50)
+
+        # 1. Top-level attribute mutation is rejected
         with pytest.raises(Exception):
             res.action = DecisionAction.BLOCK  # type: ignore
 
-    def test_to_dict_serialization(self) -> None:
-        """Verify to_dict produces a clean dictionary with string enum values."""
+        # 2. Nested mapping in-place item assignment is rejected
+        with pytest.raises((TypeError, Exception)):
+            res.thresholds_applied["block_threshold"] = 0.99  # type: ignore
+
+        # 3. Nested mapping key deletion is rejected
+        with pytest.raises((TypeError, Exception)):
+            del res.thresholds_applied["review_threshold"]  # type: ignore
+
+    def test_thresholds_applied_mapping_compatibility(self) -> None:
+        """Verify read-only MappingProxyType supports standard dictionary read operations."""
         engine = DecisionPolicyEngine()
+        res = engine.evaluate(0.50)
+
+        # Subscription read
+        assert res.thresholds_applied["review_threshold"] == 0.35
+        assert res.thresholds_applied["block_threshold"] == 0.78
+
+        # In operator
+        assert "review_threshold" in res.thresholds_applied
+        assert "non_existent" not in res.thresholds_applied
+
+        # .get() method
+        assert res.thresholds_applied.get("review_threshold") == 0.35
+        assert res.thresholds_applied.get("non_existent", 99.0) == 99.0
+
+        # Iteration & length
+        assert len(res.thresholds_applied) == 2
+        assert set(res.thresholds_applied.keys()) == {"review_threshold", "block_threshold"}
+
+    def test_to_dict_deep_independence(self) -> None:
+        """Verify to_dict produces a normal dictionary that does not mutate the source object."""
+        engine = DecisionPolicyEngine(model_version="1.0.0")
+        res = engine.evaluate(0.78)
+        d = res.to_dict()
+
+        # Mutate the dictionary returned by to_dict
+        d["thresholds_applied"]["block_threshold"] = 0.99
+        d["action"] = "APPROVE"
+
+        # Ensure original DecisionResult is unaffected
+        assert res.thresholds_applied["block_threshold"] == 0.78
+        assert res.action == DecisionAction.BLOCK
+
+    def test_to_dict_serialization(self) -> None:
+        """Verify to_dict produces a clean dictionary with string enum values and provenance."""
+        engine = DecisionPolicyEngine(model_version="1.0.0")
         res = engine.evaluate(0.78)
         d = res.to_dict()
         assert d == {
@@ -396,4 +511,9 @@ class TestDecisionResult:
                 "Model score (0.7800) meets or exceeds block threshold (0.7800). "
                 "Action: BLOCK."
             ),
+            "thresholds_applied": {
+                "review_threshold": 0.35,
+                "block_threshold": 0.78,
+            },
+            "model_version": "1.0.0",
         }

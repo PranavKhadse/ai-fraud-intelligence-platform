@@ -2,7 +2,7 @@
 Risk Engine & Decision Framework Package.
 
 Exposes core configuration, normalization functions, semantic risk tiers,
-the decision policy engine, and the end-to-end RiskEvaluator.
+the decision policy engine, the end-to-end RiskEvaluator, and batch summaries.
 """
 
 from ml.risk_engine.config import (
@@ -22,6 +22,7 @@ from ml.risk_engine.policy import (
 )
 from ml.risk_engine.evaluator import (
     RiskEvaluator,
+    BatchDecisionSummary,
 )
 
 __all__ = [
@@ -35,4 +36,5 @@ __all__ = [
     "DecisionResult",
     "DecisionPolicyEngine",
     "RiskEvaluator",
+    "BatchDecisionSummary",
 ]

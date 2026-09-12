@@ -299,7 +299,161 @@ class TestPhase5PolicyConsistency:
 
 
 # =====================================================================
-# 5. Artifact Immutability Verification Test
+# 5. Increment 3 Hardening & Provenance Tests
+# =====================================================================
+
+class TestRiskEngineHardening:
+    """
+    Test suite for Phase 6 Increment 3: Risk Engine Hardening requirements.
+    Validates decision provenance, metadata column tolerance, is_fraud isolation,
+    scalar/batch consistency, and BatchDecisionSummary metrics.
+    """
+
+    def test_metadata_column_tolerance_and_target_isolation(
+        self, evaluator: RiskEvaluator, synthetic_feature_row: pd.DataFrame
+    ) -> None:
+        """
+        Verify RiskEvaluator accepts extra metadata columns (transaction_id, account_id,
+        timestamp, is_fraud) on DataFrame, Series, and dict without mutating inputs,
+        and verify that changing is_fraud has zero effect on model score or decision.
+        """
+        # Create row with metadata
+        row_with_meta = synthetic_feature_row.copy(deep=True)
+        row_with_meta["transaction_id"] = "tx_12345"
+        row_with_meta["account_id"] = "acc_98765"
+        row_with_meta["timestamp"] = "2026-09-12T12:00:00"
+        row_with_meta["is_fraud"] = 0
+
+        # Snapshot for immutability check
+        original_copy = row_with_meta.copy(deep=True)
+
+        # 1. Evaluate DataFrame with is_fraud=0
+        res0 = evaluator.evaluate_transaction(row_with_meta)
+        pd.testing.assert_frame_equal(row_with_meta, original_copy)
+
+        # 2. Evaluate DataFrame with is_fraud=1
+        row_with_meta["is_fraud"] = 1
+        res1 = evaluator.evaluate_transaction(row_with_meta)
+
+        # 3. Assert target isolation: is_fraud value must NOT influence scores or action
+        assert res0.model_score == res1.model_score
+        assert res0.risk_score == res1.risk_score
+        assert res0.action == res1.action
+        assert res0.risk_tier == res1.risk_tier
+
+        # 4. Evaluate Series with metadata
+        series_meta = row_with_meta.iloc[0]
+        res_series = evaluator.evaluate_transaction(series_meta)
+        assert res_series.model_score == res0.model_score
+
+        # 5. Evaluate Dict with metadata
+        dict_meta = row_with_meta.iloc[0].to_dict()
+        res_dict = evaluator.evaluate_transaction(dict_meta)
+        assert res_dict.model_score == res0.model_score
+
+    def test_model_version_provenance(self, evaluator: RiskEvaluator) -> None:
+        """Verify model_version is extracted from metadata ('1.0.0') and passed to results."""
+        assert evaluator.model_version == "1.0.0"
+
+        # Evaluate a single transaction
+        synthetic_row = pd.DataFrame({
+            col: ["shopping_net" if col == "merchant_category" else "Engineer" if col == "job_category" else 10.0]
+            for col in PREDICTIVE_FEATURE_COLUMNS
+        })
+        result = evaluator.evaluate_transaction(synthetic_row)
+        assert result.model_version == "1.0.0"
+        assert result.thresholds_applied == {"review_threshold": 0.35, "block_threshold": 0.78}
+        assert result.to_dict()["model_version"] == "1.0.0"
+
+    def test_missing_metadata_version_defaults_to_none(self, tmp_path: Path) -> None:
+        """Verify that when metadata is missing or does not have a version, model_version is None."""
+        evaluator_no_meta = RiskEvaluator(metadata_path=None)
+        assert evaluator_no_meta.model_version is None
+
+        synthetic_row = pd.DataFrame({
+            col: ["shopping_net" if col == "merchant_category" else "Engineer" if col == "job_category" else 10.0]
+            for col in PREDICTIVE_FEATURE_COLUMNS
+        })
+        result = evaluator_no_meta.evaluate_transaction(synthetic_row)
+        assert result.model_version is None
+        assert result.to_dict()["model_version"] is None
+
+    def test_scalar_vs_batch_consistency(
+        self, evaluator: RiskEvaluator, synthetic_feature_batch: pd.DataFrame
+    ) -> None:
+        """Verify evaluate_dataframe and evaluate_transaction produce identical results per row."""
+        batch_results = evaluator.evaluate_dataframe(synthetic_feature_batch)
+        assert len(batch_results) == len(synthetic_feature_batch)
+
+        for i in range(len(synthetic_feature_batch)):
+            single_row = synthetic_feature_batch.iloc[[i]]
+            single_res = evaluator.evaluate_transaction(single_row)
+
+            assert single_res.model_score == batch_results[i].model_score
+            assert single_res.risk_score == batch_results[i].risk_score
+            assert single_res.action == batch_results[i].action
+            assert single_res.risk_tier == batch_results[i].risk_tier
+            assert single_res.policy_mode == batch_results[i].policy_mode
+            assert single_res.model_version == batch_results[i].model_version
+            assert single_res.thresholds_applied == batch_results[i].thresholds_applied
+
+    def test_evaluate_dataframe_summary(
+        self, evaluator: RiskEvaluator, synthetic_feature_batch: pd.DataFrame
+    ) -> None:
+        """Verify evaluate_dataframe_summary computes accurate distributions, score statistics, and enforces deep immutability."""
+        summary = evaluator.evaluate_dataframe_summary(synthetic_feature_batch)
+
+        # 1. Check counts and percentages
+        assert summary.total_transactions == len(synthetic_feature_batch)
+        assert sum(summary.action_counts.values()) == summary.total_transactions
+        assert sum(summary.risk_tier_counts.values()) == summary.total_transactions
+        assert pytest.approx(sum(summary.action_percentages.values()), rel=1e-3) == 100.0
+        assert pytest.approx(sum(summary.risk_tier_percentages.values()), rel=1e-3) == 100.0
+
+        # 2. Check stats bounds
+        assert 0.0 <= summary.model_score_stats["min"] <= summary.model_score_stats["mean"] <= summary.model_score_stats["max"] <= 1.0
+        assert 0 <= summary.risk_score_stats["min"] <= summary.risk_score_stats["mean"] <= summary.risk_score_stats["max"] <= 100
+
+        # 3. Check metadata provenance
+        assert summary.policy_mode == "TRI_TIER"
+        assert summary.thresholds_applied == {"review_threshold": 0.35, "block_threshold": 0.78}
+        assert summary.model_version == "1.0.0"
+
+        # 4. Enforce deep immutability: direct in-place mutation of nested mappings is rejected
+        with pytest.raises((TypeError, Exception)):
+            summary.action_counts["BLOCK"] = 999  # type: ignore
+        with pytest.raises((TypeError, Exception)):
+            summary.action_percentages["BLOCK"] = 99.9  # type: ignore
+        with pytest.raises((TypeError, Exception)):
+            summary.risk_tier_counts["CRITICAL"] = 999  # type: ignore
+        with pytest.raises((TypeError, Exception)):
+            summary.risk_tier_percentages["CRITICAL"] = 99.9  # type: ignore
+        with pytest.raises((TypeError, Exception)):
+            summary.model_score_stats["mean"] = 0.50  # type: ignore
+        with pytest.raises((TypeError, Exception)):
+            summary.risk_score_stats["mean"] = 50.0  # type: ignore
+        with pytest.raises((TypeError, Exception)):
+            summary.thresholds_applied["block_threshold"] = 0.99  # type: ignore
+
+        # 5. Check to_dict serialization produces independent, mutable dictionaries
+        summary_dict = summary.to_dict()
+        assert isinstance(summary_dict, dict)
+        assert summary_dict["total_transactions"] == len(synthetic_feature_batch)
+        assert "action_counts" in summary_dict
+        assert "risk_tier_counts" in summary_dict
+        assert "model_score_stats" in summary_dict
+        assert "risk_score_stats" in summary_dict
+
+        # Mutate to_dict() results and ensure source summary is unaffected
+        orig_approve_count = summary.action_counts["APPROVE"]
+        summary_dict["action_counts"]["APPROVE"] = 9999
+        summary_dict["risk_score_stats"]["max"] = 9999
+        assert summary.action_counts["APPROVE"] == orig_approve_count
+        assert summary.risk_score_stats["max"] != 9999
+
+
+# =====================================================================
+# 6. Artifact Immutability Verification Test
 # =====================================================================
 
 class TestArtifactImmutability:
