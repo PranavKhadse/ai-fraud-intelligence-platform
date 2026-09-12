@@ -1,0 +1,112 @@
+{
+  "dataset_statistics": {
+    "total_transactions": 277860,
+    "fraud_count": 924,
+    "legitimate_count": 276936,
+    "fraud_rate": 0.003325,
+    "time_window": "2020-10-03 00:59:48 to 2020-12-31 23:59:34"
+  },
+  "ranking_metrics": {
+    "pr_auc": 0.96054,
+    "roc_auc": 0.99905
+  },
+  "all_approve_baseline": {
+    "policy_name": "All-Approve Naive Baseline (tau = 1.00)",
+    "threshold": 1.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "accuracy": 0.99667,
+    "tpr": 0.0,
+    "fpr": 0.0,
+    "predicted_fraud_count": 0,
+    "confusion_matrix": {
+      "tp": 0,
+      "tn": 276936,
+      "fp": 0,
+      "fn": 924,
+      "total": 277860
+    },
+    "total_expected_cost": 184800.0,
+    "average_cost_per_transaction": 0.665083,
+    "cost_per_fraud_detected": Infinity,
+    "cost_breakdown": {
+      "fp_cost": 0.0,
+      "fn_cost": 184800.0,
+      "review_cost": 0.0,
+      "tn_cost": 0.0,
+      "tp_cost": 0.0
+    }
+  },
+  "phase4_threshold_094": {
+    "policy_name": "Phase 4 F1-Selected Threshold (tau = 0.94)",
+    "threshold": 0.94,
+    "precision": 0.94707,
+    "recall": 0.89069,
+    "f1": 0.91801,
+    "accuracy": 0.99947,
+    "tpr": 0.89069,
+    "fpr": 0.00017,
+    "predicted_fraud_count": 869,
+    "confusion_matrix": {
+      "tp": 823,
+      "tn": 276890,
+      "fp": 46,
+      "fn": 101,
+      "total": 277860
+    },
+    "total_expected_cost": 20890.0,
+    "average_cost_per_transaction": 0.075182,
+    "cost_per_fraud_detected": 25.38,
+    "cost_breakdown": {
+      "fp_cost": 690.0,
+      "fn_cost": 20200.0,
+      "review_cost": 0.0,
+      "tn_cost": 0.0,
+      "tp_cost": 0.0
+    }
+  },
+  "phase5_threshold_078": {
+    "policy_name": "Phase 5 Validation Cost-Optimized Threshold (tau = 0.78)",
+    "threshold": 0.78,
+    "precision": 0.78187,
+    "recall": 0.94264,
+    "f1": 0.85476,
+    "accuracy": 0.99893,
+    "tpr": 0.94264,
+    "fpr": 0.00088,
+    "predicted_fraud_count": 1114,
+    "confusion_matrix": {
+      "tp": 871,
+      "tn": 276693,
+      "fp": 243,
+      "fn": 53,
+      "total": 277860
+    },
+    "total_expected_cost": 14245.0,
+    "average_cost_per_transaction": 0.051267,
+    "cost_per_fraud_detected": 16.35,
+    "cost_breakdown": {
+      "fp_cost": 3645.0,
+      "fn_cost": 10600.0,
+      "review_cost": 0.0,
+      "tn_cost": 0.0,
+      "tp_cost": 0.0
+    }
+  },
+  "comparative_impact": {
+    "cost_difference_094_vs_078": 6645.0,
+    "percentage_cost_reduction_vs_094": 31.81,
+    "cost_difference_all_approve_vs_078": 170555.0,
+    "percentage_cost_reduction_vs_all_approve": 92.29,
+    "additional_fraud_detected": 48,
+    "additional_false_positives": 197
+  },
+  "cost_assumptions": {
+    "false_positive_cost": 15.0,
+    "false_negative_cost": 200.0,
+    "manual_review_cost": 5.0,
+    "true_negative_cost": 0.0,
+    "true_positive_cost": 0.0
+  }
+}

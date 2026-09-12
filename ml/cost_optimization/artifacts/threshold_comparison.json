@@ -1,0 +1,65 @@
+{
+  "phase4_threshold_094": {
+    "policy_name": "Phase 4 Threshold (tau = 0.94)",
+    "threshold": 0.94,
+    "precision": 0.93718,
+    "recall": 0.89189,
+    "f1": 0.91397,
+    "fpr": 0.00026,
+    "confusion_matrix": {
+      "tp": 1089,
+      "tn": 276565,
+      "fp": 73,
+      "fn": 132
+    },
+    "total_expected_cost": 27495.0,
+    "average_cost_per_transaction": 0.098953
+  },
+  "f1_optimal_threshold": {
+    "policy_name": "F1-Optimal Threshold (tau = 0.94)",
+    "threshold": 0.94,
+    "precision": 0.93718,
+    "recall": 0.89189,
+    "f1": 0.91397,
+    "fpr": 0.00026,
+    "confusion_matrix": {
+      "tp": 1089,
+      "tn": 276565,
+      "fp": 73,
+      "fn": 132
+    },
+    "total_expected_cost": 27495.0,
+    "average_cost_per_transaction": 0.098953
+  },
+  "cost_optimal_threshold": {
+    "policy_name": "Cost-Optimal Threshold (tau = 0.78)",
+    "threshold": 0.78,
+    "precision": 0.78697,
+    "recall": 0.95004,
+    "f1": 0.86085,
+    "fpr": 0.00114,
+    "confusion_matrix": {
+      "tp": 1160,
+      "tn": 276324,
+      "fp": 314,
+      "fn": 61
+    },
+    "total_expected_cost": 16910.0,
+    "average_cost_per_transaction": 0.060858
+  },
+  "optimization_impact": {
+    "cost_at_094": 27495.0,
+    "cost_at_cost_opt": 16910.0,
+    "absolute_cost_savings": 10585.0,
+    "relative_cost_savings_pct": 38.5,
+    "additional_fraud_caught": 71,
+    "additional_false_positives": 241
+  },
+  "cost_assumptions": {
+    "false_positive_cost": 15.0,
+    "false_negative_cost": 200.0,
+    "manual_review_cost": 5.0,
+    "true_negative_cost": 0.0,
+    "true_positive_cost": 0.0
+  }
+}
