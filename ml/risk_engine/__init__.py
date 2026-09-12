@@ -2,7 +2,7 @@
 Risk Engine & Decision Framework Package.
 
 Exposes core configuration, normalization functions, semantic risk tiers,
-and the decision policy engine.
+the decision policy engine, and the end-to-end RiskEvaluator.
 """
 
 from ml.risk_engine.config import (
@@ -20,6 +20,9 @@ from ml.risk_engine.policy import (
     DecisionResult,
     DecisionPolicyEngine,
 )
+from ml.risk_engine.evaluator import (
+    RiskEvaluator,
+)
 
 __all__ = [
     "DecisionAction",
@@ -31,4 +34,5 @@ __all__ = [
     "risk_tier_from_score",
     "DecisionResult",
     "DecisionPolicyEngine",
+    "RiskEvaluator",
 ]
