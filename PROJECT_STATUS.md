@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md — Project Tracking & Status Dashboard
 
 > **Platform:** AI-Powered Fraud Detection & Risk Intelligence Platform
-> **Last Updated:** Current Date (Phase 5 Implementation Completed)
-> **Current Active Phase:** **Phase 5 — Imbalance Handling & Cost Optimization (Completed)**
+> **Last Updated:** Current Date (Phase 6 Implementation Completed)
+> **Current Active Phase:** **Phase 6 — Risk Engine & Decision Framework (Completed)**
 
 ---
 
@@ -15,9 +15,9 @@
 | **Phase 2** | **Exploratory Data Analysis (EDA) & Insights** | 🟢 **Completed** | Milestone 2 |
 | **Phase 3** | **Behavioral Feature Engineering** | 🟢 **Completed** | Milestone 3 |
 | **Phase 4** | **Baseline & Advanced ML Models** | 🟢 **Completed** | Milestone 4 |
-| **Phase 5** | **Imbalance Handling & Cost Optimization** | 🟢 **Completed** | Milestone 5 (Current) |
-| **Phase 6** | **Risk Engine & Decision Framework** | ⚪ Pending | Next Milestone |
-| **Phase 7** | **Explainability & Reason Codes** | ⚪ Pending | Phase 7 |
+| **Phase 5** | **Imbalance Handling & Cost Optimization** | 🟢 **Completed** | Milestone 5 |
+| **Phase 6** | **Risk Engine & Decision Framework** | 🟢 **Completed** | Milestone 6 (Current) |
+| **Phase 7** | **Explainability & Reason Codes** | ⚪ Pending | Next Milestone |
 | **Phase 8** | **Fraud Detection API (FastAPI)** | ⚪ Pending | Phase 8 |
 | **Phase 9** | **Database & Persistence (PostgreSQL)** | ⚪ Pending | Phase 9 |
 | **Phase 10** | **Real-Time Detection & Benchmarking** | ⚪ Pending | Phase 10 |
@@ -62,6 +62,32 @@
 
 ---
 
+## ✅ Phase 6 Deliverable Checklist (Risk Engine & Decision Framework)
+
+- [x] **Increment 1: Core Normalization & Tier Mapping**:
+  - Implemented exact scalar and vectorized model score normalization ($[0.0, 1.0] \to [0, 100]$) in `ml/risk_engine/normalization.py`.
+  - Implemented monotonic 4-band risk tier mapping (`LOW`: 0–34, `MEDIUM`: 35–59, `HIGH`: 60–77, `CRITICAL`: 78–100).
+- [x] **Increment 2: Decision Policy Engine & End-to-End Evaluator**:
+  - Implemented `DecisionPolicyConfig`, `DecisionResult`, and `DecisionPolicyEngine` supporting `TRI_TIER` ($\tau_{\text{rev}}=0.35, \tau_{\text{blk}}=0.78$) and `BINARY_AUTO` ($\tau_{\text{blk}}=0.78$) in `ml/risk_engine/policy.py`.
+  - Built production `RiskEvaluator` in `ml/risk_engine/evaluator.py` loading frozen champion artifacts in read-only mode.
+- [x] **Increment 3: Provenance Hardening & Metadata Tolerance**:
+  - Implemented `BatchDecisionSummary` aggregation with deep immutability.
+  - Added model version provenance tracking from `model_metadata.json` and robust non-predictive metadata column passthrough.
+- [x] **Increment 4: Immutable Policy Reason Codes**:
+  - Defined typed `DecisionReasonCode` enum and deterministic decision boundary explanations.
+- [x] **Increment 5A & 5B: Deterministic Rule Engine & Hybrid Precedence**:
+  - Implemented immutable `RiskRule`, `RuleMatch`, and `RuleEngine` in `ml/risk_engine/rules.py` supporting typed operators (`>`, `<`, `in`, `is_true`).
+  - Integrated hybrid decision coordinator with deterministic precedence ($\text{BLOCK} \succ \text{REVIEW} \succ \text{APPROVE} \succ \text{MONITOR}$) and non-downgrading protected model blocks.
+- [x] **Increment 6: Standard Rule Catalog, Empirical Benchmark & Reconciliation Audit**:
+  - Implemented verified 6-rule standard catalog in `ml/risk_engine/catalog.py` (2 `REVIEW` rules, 4 `MONITOR` rules, 0 hard-block rules).
+  - Completed strictly read-only empirical benchmark and independent reconciliation audit on $555,719$ validation and OOT transactions.
+  - Proved 100% strict-blocking invariance ($\Delta = 0$ TP, FP, FN, TN, precision, recall, F1).
+  - Clarified review-queue dynamics: catalog acts as a safety-net manual review escalation layer, diluting review queue purity ($4.70\% \to 1.93\%$ in OOT) because ML already captures $98.7\%$ of high-zscore frauds in the hard block tier.
+  - Authored authoritative Phase 6 report in `docs/risk_engine_report.md`.
+  - Expanded test suite to **250 risk engine tests** and **332 total ML tests** with 100% pass rate.
+
+---
+
 ## 🏛 Architectural Decision Records (ADRs)
 
 ### ADR-001: Modular Monorepo Scaffolding
@@ -92,23 +118,25 @@
 - **Status**: Accepted (Phase 4).
 
 ### ADR-010: Cost-Sensitive Decision Boundary Optimization & Leakage-Safe Governance
-- **Context**: F1 score implicitly assumes equal weight between precision and recall ($\beta=1$), whereas financial fraud loss ($C_{\text{FN}} \approx \$200$) is $\approx 13.3\times$ more expensive than false alarm friction ($C_{\text{FP}} \approx \$15$).
-- **Decision**: Optimize decision thresholds directly on validation model score distributions to minimize expected decision loss. Designate raw XGBoost outputs as continuous model scores due to `scale_pos_weight` probability inflation. Keep the OOT test partition strictly frozen and unvisited until final policy verification.
 - **Status**: Accepted (Phase 5).
+
+### ADR-011: Hybrid Risk Decisioning & Standard Rule Catalog Governance
+- **Context**: Business domain rules and compliance constraints must operate alongside ML predictions without overriding high-confidence ML blocks or creating catastrophic false-positive spikes.
+- **Decision**: Structure the standard rule catalog as a risk-intelligence and manual-review escalation layer (containing `REVIEW` and `MONITOR` rules, with zero automated hard-block rules). Enforce strict precedence where ML `BLOCK` outcomes are immutable and cannot be downgraded by lower-tier rules. Relegate geographic speed anomalies to `MONITOR` status to avoid false-positive disruptions on e-commerce transactions.
+- **Status**: Accepted (Phase 6).
 
 ---
 
 ## ⚠️ Known Constraints & Risk Register
 
-1. **Class Imbalance & Probability Scaling**: XGBoost model outputs are continuous ranking scores. 0–100 Risk Score mapping in Phase 6 will use calibrated percentile mapping preserving decision tiers without asserting true empirical event frequencies.
-2. **Fixed Unit Costs vs Amount-Based Monetary Loss**: The current fixed-cost model ($C_{\text{FP}}=\$15, C_{\text{FN}}=\$200$) provides a robust operational baseline; future transaction-level dynamic costing can incorporate transaction dollar amounts.
+1. **Review Queue Operational Sizing**: Hybrid rule overrides add $\approx 1,039$ transactions to the OOT manual review queue ($+168.4\%$ volume increase). Real-world deployments must ensure sufficient analyst capacity to maintain SLA targets.
+2. **Static Fixed-Cost Assumptions**: Current benchmark evaluations apply fixed unit costs ($C_{\text{FP}}=\$15, C_{\text{FN}}=\$200, C_{\text{REV}}=\$5$). Dynamic amount-weighted risk scoring is recommended for future financial optimization.
 
 ---
 
-## ⏭ Next Step: Preparation for Phase 6 (Risk Engine & Decision Framework)
+## ⏭ Next Step: Preparation for Phase 7 (Explainability & Reason Codes)
 
-When approved to start Phase 6:
-- Architect composite 0–100 Risk Scoring Engine translating model scores into calibrated risk ratings.
-- Implement deterministic Rule Engine Overrides (hard blacklist, single transaction velocity limits, high-risk merchant checks).
-- Implement tri-tier decision policy engine: `APPROVE` (Score $< 35$), `REVIEW` ($35 \le \text{Score} < 75$), `BLOCK` ($\text{Score} \ge 75$).
-- Generate structured evaluation payloads for downstream API consumption (Phase 8).
+When approved to start Phase 7:
+- Integrate TreeSHAP feature attributions on top of the XGBoost champion model.
+- Map local SHAP attribution values into standardized human-readable reason codes for all non-approved transactions.
+- Implement waterfall visualization exports for downstream analyst case management.

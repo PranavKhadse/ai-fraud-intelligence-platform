@@ -16,6 +16,7 @@ from ml.risk_engine.config import (
     PolicyMode,
     DecisionPolicyConfig,
     DecisionReasonCode,
+    RuleOutcome,
 )
 from ml.risk_engine.normalization import (
     normalize_model_score,
@@ -39,6 +40,9 @@ class DecisionResult:
         thresholds_applied: Exact raw score threshold boundaries applied during evaluation (read-only mapping).
         model_version: Provenance version of the champion model artifact if available.
         reason_codes: Immutable tuple of policy-level decision reason codes.
+        rules_triggered: Immutable tuple of deterministic business rule IDs triggered.
+        is_overridden: Flag indicating whether a business rule overrode the baseline ML policy action.
+        rule_action: Highest-precedence rule outcome enacted if an override occurred.
     """
     action: DecisionAction
     risk_score: int
@@ -49,6 +53,9 @@ class DecisionResult:
     thresholds_applied: Mapping[str, float] = field(default_factory=dict)
     model_version: Optional[str] = None
     reason_codes: Tuple[DecisionReasonCode, ...] = field(default_factory=tuple)
+    rules_triggered: Tuple[str, ...] = field(default_factory=tuple)
+    is_overridden: bool = False
+    rule_action: Optional[RuleOutcome] = None
 
     def __post_init__(self) -> None:
         """Defensive validation of result fields and enforcement of deep immutability."""
@@ -86,6 +93,31 @@ class DecisionResult:
                 )
         object.__setattr__(self, "reason_codes", tuple(self.reason_codes))
 
+        # Validate and enforce tuple immutability on rules_triggered
+        if not isinstance(self.rules_triggered, (tuple, list)):
+            raise TypeError(f"rules_triggered must be a tuple or list, got {type(self.rules_triggered).__name__}")
+        for r_id in self.rules_triggered:
+            if not isinstance(r_id, str):
+                raise TypeError(f"rules_triggered elements must be strings, got {type(r_id).__name__}")
+        object.__setattr__(self, "rules_triggered", tuple(self.rules_triggered))
+
+        # Validate is_overridden
+        if not isinstance(self.is_overridden, bool):
+            raise TypeError(f"is_overridden must be a boolean, got {type(self.is_overridden).__name__}")
+
+        # Validate rule_action
+        ra = self.rule_action
+        if ra is not None:
+            if isinstance(ra, str):
+                try:
+                    ra = RuleOutcome(ra)
+                except ValueError:
+                    valid_outcomes = [o.value for o in RuleOutcome]
+                    raise ValueError(f"Invalid rule_action '{ra}'. Allowed outcomes: {valid_outcomes}")
+            elif not isinstance(ra, RuleOutcome):
+                raise TypeError(f"rule_action must be a RuleOutcome enum, str, or None, got {type(ra).__name__}")
+            object.__setattr__(self, "rule_action", ra)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert decision result to a clean JSON-serializable dictionary."""
         return {
@@ -100,7 +132,11 @@ class DecisionResult:
             },
             "model_version": self.model_version,
             "reason_codes": [code.value for code in self.reason_codes],
+            "rules_triggered": list(self.rules_triggered),
+            "is_overridden": self.is_overridden,
+            "rule_action": self.rule_action.value if self.rule_action is not None else None,
         }
+
 
 
 class DecisionPolicyEngine:

@@ -65,6 +65,31 @@ class DecisionReasonCode(str, Enum):
     )
 
 
+class RuleType(str, Enum):
+    """Categorization of deterministic business and heuristic rules."""
+    VELOCITY = "VELOCITY"
+    AMOUNT = "AMOUNT"
+    GEOGRAPHY = "GEOGRAPHY"
+    DEVICE = "DEVICE"
+    COMPLIANCE = "COMPLIANCE"
+    CUSTOM = "CUSTOM"
+
+
+class RuleOutcome(str, Enum):
+    """Outcome actions associated with a triggered business rule."""
+    BLOCK = "BLOCK"
+    REVIEW = "REVIEW"
+    MONITOR = "MONITOR"
+
+
+class RuleOperator(str, Enum):
+    """Supported deterministic rule comparison operators."""
+    GREATER_THAN = ">"
+    LESS_THAN = "<"
+    IN = "in"
+    IS_TRUE = "is_true"
+
+
 @dataclass(frozen=True)
 class DecisionPolicyConfig:
     """

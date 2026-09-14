@@ -1,19 +1,36 @@
 """
-Automated Integration Tests for Phase 6 Increment 2: RiskEvaluator & End-to-End Decision Pipeline.
+Automated Integration Tests for Phase 6 Increment 2 & 5B: RiskEvaluator & Hybrid ML + Rule Decision Pipeline.
 
 Validates:
-1. RiskEvaluator Initialization: Default and custom paths/configs, FileNotFoundError on missing paths.
+1. RiskEvaluator Initialization: Default and custom paths/configs, RuleEngine attachment, FileNotFoundError on missing paths.
 2. Synthetic End-to-End Evaluation: Scalar (DataFrame, Series, Dict) and batch DataFrame scoring.
 3. Defensive Input Validation: Missing columns, non-finite values, empty inputs, type errors.
 4. Input Immutability: Asserts input DataFrames are not mutated during evaluation.
 5. Authoritative Phase 5 Policy Consistency: Validates that RiskEvaluator in BINARY_AUTO mode with
    block_threshold=0.78 on Validation data dynamically matches authoritative Phase 5 confusion matrix.
-6. Artifact Immutability: Guarantees zero artifact modification across Phase 4 and Phase 5 artifacts.
+6. Increment 3 Hardening & Provenance: Metadata tolerance, model version provenance, BatchDecisionSummary.
+7. Increment 5B Hybrid Decision Integration:
+   - ML APPROVE + BLOCK rule -> final BLOCK (is_overridden=True, rule_action=BLOCK)
+   - ML REVIEW + BLOCK rule -> final BLOCK (is_overridden=True, rule_action=BLOCK)
+   - ML APPROVE + REVIEW rule -> final REVIEW (is_overridden=True, rule_action=REVIEW)
+   - ML REVIEW + REVIEW rule -> final REVIEW (is_overridden=False, rule_action=None)
+   - ML BLOCK + REVIEW rule -> final BLOCK (is_overridden=False, rule_action=None, no downgrade)
+   - ML BLOCK + BLOCK rule -> final BLOCK (is_overridden=False, rule_action=None)
+   - ML action + MONITOR rule -> unchanged action (is_overridden=False, rule_action=None, rule recorded)
+   - Multiple matched rules with deterministic precedence hierarchy (BLOCK > REVIEW > MONITOR)
+   - Multiple matched rules with deterministic rules_triggered ordering
+   - Exact baseline preservation when no rules supplied or empty RuleEngine
+   - Single-transaction hybrid evaluation across DataFrame, Series, and dict formats
+   - Batch DataFrame hybrid evaluation with accurate overridden_count and rule_trigger_counts
+   - Missing rule feature tolerance without breaking ML scoring
+   - Score and reason invariance: model_score, risk_score, reason, and reason_codes unchanged after overrides
+8. Artifact Immutability: Guarantees zero artifact modification across Phase 4 and Phase 5 artifacts.
 """
 
 import json
 import hashlib
 from pathlib import Path
+from types import MappingProxyType
 import pytest
 import numpy as np
 import pandas as pd
@@ -27,11 +44,20 @@ from ml.risk_engine.config import (
     RiskTier,
     PolicyMode,
     DecisionPolicyConfig,
+    DecisionReasonCode,
+    RuleOutcome,
+    RuleType,
+    RuleOperator,
 )
 from ml.risk_engine.evaluator import (
     RiskEvaluator,
+    BatchDecisionSummary,
     DEFAULT_MODEL_PATH,
     DEFAULT_PREPROCESSOR_PATH,
+)
+from ml.risk_engine.rules import (
+    RiskRule,
+    RuleEngine,
 )
 
 
@@ -50,7 +76,7 @@ BASELINE_ARTIFACT_HASHES = {
 
 @pytest.fixture(scope="module")
 def evaluator() -> RiskEvaluator:
-    """Create a module-scoped RiskEvaluator instance loaded from frozen artifacts."""
+    """Create a module-scoped RiskEvaluator instance loaded from frozen artifacts without rules."""
     return RiskEvaluator()
 
 
@@ -93,12 +119,13 @@ class TestRiskEvaluatorInit:
     """Test suite for RiskEvaluator setup and path handling."""
 
     def test_default_initialization(self, evaluator: RiskEvaluator) -> None:
-        """Verify default evaluator setup with frozen model and preprocessor."""
+        """Verify default evaluator setup with frozen model, preprocessor, and no rule engine."""
         assert evaluator.model is not None
         assert evaluator.preprocessor is not None
         assert evaluator.config.policy_mode == PolicyMode.TRI_TIER
         assert evaluator.config.review_threshold == 0.35
         assert evaluator.config.block_threshold == 0.78
+        assert evaluator.rule_engine is None
 
     def test_custom_policy_config(self) -> None:
         """Verify evaluator respects custom policy configuration."""
@@ -109,6 +136,26 @@ class TestRiskEvaluatorInit:
         evaluator = RiskEvaluator(policy_config=custom_cfg)
         assert evaluator.config.policy_mode == PolicyMode.BINARY_AUTO
         assert evaluator.config.block_threshold == 0.65
+
+    def test_custom_rule_engine_attachment(self) -> None:
+        """Verify evaluator accepts a validated RuleEngine instance."""
+        rule = RiskRule(
+            rule_id="R_HIGH_AMT",
+            description="Block transactions > 5000",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=5000.0,
+            outcome=RuleOutcome.BLOCK,
+        )
+        engine = RuleEngine([rule])
+        evaluator = RiskEvaluator(rule_engine=engine)
+        assert evaluator.rule_engine is engine
+        assert len(evaluator.rule_engine) == 1
+
+    def test_invalid_rule_engine_type_rejection(self) -> None:
+        """Verify passing non-RuleEngine to rule_engine raises TypeError."""
+        with pytest.raises(TypeError, match="rule_engine must be an instance of RuleEngine"):
+            RiskEvaluator(rule_engine="INVALID_ENGINE")  # type: ignore
 
     def test_missing_model_file_raises_error(self, tmp_path: Path) -> None:
         """Verify non-existent model artifact path raises FileNotFoundError."""
@@ -143,6 +190,9 @@ class TestRiskEvaluatorSynthetic:
         assert isinstance(result.risk_tier, RiskTier)
         assert isinstance(result.action, DecisionAction)
         assert result.policy_mode == PolicyMode.TRI_TIER
+        assert result.rules_triggered == ()
+        assert result.is_overridden is False
+        assert result.rule_action is None
 
     def test_evaluate_single_transaction_series(
         self, evaluator: RiskEvaluator, synthetic_feature_row: pd.DataFrame
@@ -175,6 +225,9 @@ class TestRiskEvaluatorSynthetic:
             assert 0 <= res.risk_score <= 100
             assert isinstance(res.risk_tier, RiskTier)
             assert isinstance(res.action, DecisionAction)
+            assert res.rules_triggered == ()
+            assert res.is_overridden is False
+            assert res.rule_action is None
 
     def test_input_dataframe_immutability(
         self, evaluator: RiskEvaluator, synthetic_feature_batch: pd.DataFrame
@@ -355,7 +408,6 @@ class TestRiskEngineHardening:
         """Verify model_version is extracted from metadata ('1.0.0') and passed to results."""
         assert evaluator.model_version == "1.0.0"
 
-        # Evaluate a single transaction
         synthetic_row = pd.DataFrame({
             col: ["shopping_net" if col == "merchant_category" else "Engineer" if col == "job_category" else 10.0]
             for col in PREDICTIVE_FEATURE_COLUMNS
@@ -414,10 +466,12 @@ class TestRiskEngineHardening:
         assert 0.0 <= summary.model_score_stats["min"] <= summary.model_score_stats["mean"] <= summary.model_score_stats["max"] <= 1.0
         assert 0 <= summary.risk_score_stats["min"] <= summary.risk_score_stats["mean"] <= summary.risk_score_stats["max"] <= 100
 
-        # 3. Check metadata provenance
+        # 3. Check metadata provenance & additive rule metrics
         assert summary.policy_mode == "TRI_TIER"
         assert summary.thresholds_applied == {"review_threshold": 0.35, "block_threshold": 0.78}
         assert summary.model_version == "1.0.0"
+        assert summary.overridden_count == 0
+        assert summary.rule_trigger_counts == {}
 
         # 4. Enforce deep immutability: direct in-place mutation of nested mappings is rejected
         with pytest.raises((TypeError, Exception)):
@@ -434,6 +488,8 @@ class TestRiskEngineHardening:
             summary.risk_score_stats["mean"] = 50.0  # type: ignore
         with pytest.raises((TypeError, Exception)):
             summary.thresholds_applied["block_threshold"] = 0.99  # type: ignore
+        with pytest.raises((TypeError, Exception)):
+            summary.rule_trigger_counts["RULE_TEST"] = 1  # type: ignore
 
         # 5. Check to_dict serialization produces independent, mutable dictionaries
         summary_dict = summary.to_dict()
@@ -443,6 +499,8 @@ class TestRiskEngineHardening:
         assert "risk_tier_counts" in summary_dict
         assert "model_score_stats" in summary_dict
         assert "risk_score_stats" in summary_dict
+        assert summary_dict["overridden_count"] == 0
+        assert summary_dict["rule_trigger_counts"] == {}
 
         # Mutate to_dict() results and ensure source summary is unaffected
         orig_approve_count = summary.action_counts["APPROVE"]
@@ -453,7 +511,480 @@ class TestRiskEngineHardening:
 
 
 # =====================================================================
-# 6. Artifact Immutability Verification Test
+# 6. Increment 5B Hybrid Decision Integration Tests
+# =====================================================================
+
+class TestHybridDecisionIntegration:
+    """
+    Test suite for Phase 6 Increment 5B: Hybrid ML & Rule Decision Integration.
+
+    Validates:
+    - Deterministic precedence hierarchy: BLOCK > REVIEW > MONITOR > ML Baseline.
+    - Rule provenance metadata (rules_triggered, is_overridden, rule_action).
+    - Preservation of exact baseline when RuleEngine is None or empty.
+    - Non-downgrading semantics (REVIEW rule cannot downgrade ML BLOCK).
+    - Invariance of model_score, risk_score, and policy reason_codes under overrides.
+    - Single transaction and DataFrame batch evaluations.
+    - Summary metrics aggregation (overridden_count, rule_trigger_counts).
+    - Missing rule feature safety.
+    """
+
+    @pytest.fixture
+    def sample_low_risk_row(self) -> pd.DataFrame:
+        """Construct a sample transaction row that generates an ML APPROVE decision."""
+        row_dict = {
+            col: "shopping_net" if col == "merchant_category" else "Engineer" if col == "job_category" else 1.0
+            for col in PREDICTIVE_FEATURE_COLUMNS
+        }
+        return pd.DataFrame([row_dict])
+
+    def test_baseline_preservation_when_rule_engine_is_none(
+        self, sample_low_risk_row: pd.DataFrame
+    ) -> None:
+        """Verify exact baseline ML decision when rule_engine is None."""
+        evaluator = RiskEvaluator(rule_engine=None)
+        res = evaluator.evaluate_transaction(sample_low_risk_row)
+
+        assert res.action == DecisionAction.APPROVE
+        assert res.rules_triggered == ()
+        assert res.is_overridden is False
+        assert res.rule_action is None
+        assert res.reason_codes == (DecisionReasonCode.BELOW_REVIEW_THRESHOLD,)
+
+    def test_baseline_preservation_when_rule_engine_is_empty(
+        self, sample_low_risk_row: pd.DataFrame
+    ) -> None:
+        """Verify exact baseline ML decision when rule_engine has zero rules."""
+        evaluator = RiskEvaluator(rule_engine=RuleEngine([]))
+        res = evaluator.evaluate_transaction(sample_low_risk_row)
+
+        assert res.action == DecisionAction.APPROVE
+        assert res.rules_triggered == ()
+        assert res.is_overridden is False
+        assert res.rule_action is None
+
+    def test_ml_approve_plus_block_rule_overrides_to_block(
+        self, sample_low_risk_row: pd.DataFrame
+    ) -> None:
+        """
+        Verify: ML APPROVE + RuleOutcome.BLOCK -> final DecisionAction.BLOCK.
+        Asserts is_overridden=True, rule_action=BLOCK, and score invariance.
+        """
+        rule = RiskRule(
+            rule_id="RULE_SANCTIONS_BLOCK",
+            description="Sanctioned entity check",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.5,
+            outcome=RuleOutcome.BLOCK,
+            rule_type=RuleType.COMPLIANCE,
+            priority=10,
+        )
+        evaluator = RiskEvaluator(rule_engine=RuleEngine([rule]))
+
+        baseline_evaluator = RiskEvaluator()
+        baseline_res = baseline_evaluator.evaluate_transaction(sample_low_risk_row)
+        assert baseline_res.action == DecisionAction.APPROVE
+
+        hybrid_res = evaluator.evaluate_transaction(sample_low_risk_row)
+
+        # 1. Action override
+        assert hybrid_res.action == DecisionAction.BLOCK
+        assert hybrid_res.is_overridden is True
+        assert hybrid_res.rule_action == RuleOutcome.BLOCK
+        assert hybrid_res.rules_triggered == ("RULE_SANCTIONS_BLOCK",)
+
+        # 2. Score & policy provenance invariance
+        assert hybrid_res.model_score == baseline_res.model_score
+        assert hybrid_res.risk_score == baseline_res.risk_score
+        assert hybrid_res.risk_tier == baseline_res.risk_tier
+        assert hybrid_res.reason == baseline_res.reason
+        assert hybrid_res.reason_codes == baseline_res.reason_codes
+        assert hybrid_res.model_version == baseline_res.model_version
+        assert hybrid_res.thresholds_applied == baseline_res.thresholds_applied
+
+    def test_ml_review_plus_block_rule_overrides_to_block(self) -> None:
+        """
+        Verify: ML REVIEW + RuleOutcome.BLOCK -> final DecisionAction.BLOCK.
+        Asserts is_overridden=True, rule_action=BLOCK.
+        """
+        # Configure policy where threshold forces ML REVIEW
+        policy_cfg = DecisionPolicyConfig(
+            policy_mode=PolicyMode.TRI_TIER,
+            review_threshold=0.0,  # Forces any score >= 0.0 into REVIEW
+            block_threshold=0.99,
+        )
+        rule = RiskRule(
+            rule_id="RULE_VELOCITY_BLOCK",
+            description="Extreme velocity block",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.5,
+            outcome=RuleOutcome.BLOCK,
+        )
+        evaluator = RiskEvaluator(policy_config=policy_cfg, rule_engine=RuleEngine([rule]))
+
+        row = pd.DataFrame([{
+            col: "shopping_net" if col == "merchant_category" else "Engineer" if col == "job_category" else 1.0
+            for col in PREDICTIVE_FEATURE_COLUMNS
+        }])
+        res = evaluator.evaluate_transaction(row)
+
+        assert res.action == DecisionAction.BLOCK
+        assert res.is_overridden is True
+        assert res.rule_action == RuleOutcome.BLOCK
+        assert res.rules_triggered == ("RULE_VELOCITY_BLOCK",)
+
+    def test_ml_approve_plus_review_rule_overrides_to_review(
+        self, sample_low_risk_row: pd.DataFrame
+    ) -> None:
+        """
+        Verify: ML APPROVE + RuleOutcome.REVIEW -> final DecisionAction.REVIEW.
+        Asserts is_overridden=True, rule_action=REVIEW.
+        """
+        rule = RiskRule(
+            rule_id="RULE_DEVICE_REVIEW",
+            description="Suspicious device requires review",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.5,
+            outcome=RuleOutcome.REVIEW,
+            rule_type=RuleType.DEVICE,
+        )
+        evaluator = RiskEvaluator(rule_engine=RuleEngine([rule]))
+        res = evaluator.evaluate_transaction(sample_low_risk_row)
+
+        assert res.action == DecisionAction.REVIEW
+        assert res.is_overridden is True
+        assert res.rule_action == RuleOutcome.REVIEW
+        assert res.rules_triggered == ("RULE_DEVICE_REVIEW",)
+
+    def test_ml_review_plus_review_rule_keeps_review_no_override(self) -> None:
+        """
+        Verify: ML REVIEW + RuleOutcome.REVIEW -> final DecisionAction.REVIEW.
+        Action was already REVIEW, so is_overridden=False, rule_action=None.
+        """
+        policy_cfg = DecisionPolicyConfig(
+            policy_mode=PolicyMode.TRI_TIER,
+            review_threshold=0.0,  # Baseline is REVIEW
+            block_threshold=0.99,
+        )
+        rule = RiskRule(
+            rule_id="RULE_SUSPICIOUS_REVIEW",
+            description="Suspicious merchant",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.5,
+            outcome=RuleOutcome.REVIEW,
+        )
+        evaluator = RiskEvaluator(policy_config=policy_cfg, rule_engine=RuleEngine([rule]))
+
+        row = pd.DataFrame([{
+            col: "shopping_net" if col == "merchant_category" else "Engineer" if col == "job_category" else 1.0
+            for col in PREDICTIVE_FEATURE_COLUMNS
+        }])
+        res = evaluator.evaluate_transaction(row)
+
+        assert res.action == DecisionAction.REVIEW
+        assert res.is_overridden is False
+        assert res.rule_action is None
+        assert res.rules_triggered == ("RULE_SUSPICIOUS_REVIEW",)
+
+    def test_ml_block_plus_review_rule_never_downgrades(self) -> None:
+        """
+        Verify: ML BLOCK + RuleOutcome.REVIEW -> final DecisionAction.BLOCK.
+        Must NEVER downgrade ML BLOCK. is_overridden=False, rule_action=None.
+        """
+        policy_cfg = DecisionPolicyConfig(
+            policy_mode=PolicyMode.TRI_TIER,
+            review_threshold=0.0,
+            block_threshold=0.0,  # Baseline is BLOCK
+        )
+        rule = RiskRule(
+            rule_id="RULE_SUSPICIOUS_REVIEW",
+            description="Review rule match",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.5,
+            outcome=RuleOutcome.REVIEW,
+        )
+        evaluator = RiskEvaluator(policy_config=policy_cfg, rule_engine=RuleEngine([rule]))
+
+        row = pd.DataFrame([{
+            col: "shopping_net" if col == "merchant_category" else "Engineer" if col == "job_category" else 1.0
+            for col in PREDICTIVE_FEATURE_COLUMNS
+        }])
+        res = evaluator.evaluate_transaction(row)
+
+        assert res.action == DecisionAction.BLOCK
+        assert res.is_overridden is False
+        assert res.rule_action is None
+        assert res.rules_triggered == ("RULE_SUSPICIOUS_REVIEW",)
+
+    def test_ml_block_plus_block_rule_keeps_block_no_override(self) -> None:
+        """
+        Verify: ML BLOCK + RuleOutcome.BLOCK -> final DecisionAction.BLOCK.
+        Action was already BLOCK, so is_overridden=False, rule_action=None.
+        """
+        policy_cfg = DecisionPolicyConfig(
+            policy_mode=PolicyMode.TRI_TIER,
+            review_threshold=0.0,
+            block_threshold=0.0,  # Baseline is BLOCK
+        )
+        rule = RiskRule(
+            rule_id="RULE_SANCTIONS_BLOCK",
+            description="Sanctions block",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.5,
+            outcome=RuleOutcome.BLOCK,
+        )
+        evaluator = RiskEvaluator(policy_config=policy_cfg, rule_engine=RuleEngine([rule]))
+
+        row = pd.DataFrame([{
+            col: "shopping_net" if col == "merchant_category" else "Engineer" if col == "job_category" else 1.0
+            for col in PREDICTIVE_FEATURE_COLUMNS
+        }])
+        res = evaluator.evaluate_transaction(row)
+
+        assert res.action == DecisionAction.BLOCK
+        assert res.is_overridden is False
+        assert res.rule_action is None
+        assert res.rules_triggered == ("RULE_SANCTIONS_BLOCK",)
+
+    def test_ml_action_plus_monitor_rule_leaves_action_unchanged(
+        self, sample_low_risk_row: pd.DataFrame
+    ) -> None:
+        """
+        Verify: ML APPROVE + RuleOutcome.MONITOR -> final DecisionAction.APPROVE.
+        Rule is recorded in rules_triggered, but is_overridden=False and rule_action=None.
+        """
+        rule = RiskRule(
+            rule_id="RULE_NEW_DEVICE_MONITOR",
+            description="Log new device observed",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.5,
+            outcome=RuleOutcome.MONITOR,
+            rule_type=RuleType.DEVICE,
+        )
+        evaluator = RiskEvaluator(rule_engine=RuleEngine([rule]))
+        res = evaluator.evaluate_transaction(sample_low_risk_row)
+
+        assert res.action == DecisionAction.APPROVE
+        assert res.is_overridden is False
+        assert res.rule_action is None
+        assert res.rules_triggered == ("RULE_NEW_DEVICE_MONITOR",)
+
+    def test_multiple_rules_deterministic_precedence_and_order(
+        self, sample_low_risk_row: pd.DataFrame
+    ) -> None:
+        """
+        Verify: Multiple matched rules resolve with BLOCK > REVIEW > MONITOR precedence,
+        and rules_triggered maintains deterministic sorted priority/id order.
+        """
+        r_monitor = RiskRule(
+            rule_id="R1_MONITOR",
+            description="Monitor rule",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.1,
+            outcome=RuleOutcome.MONITOR,
+            priority=10,
+        )
+        r_review = RiskRule(
+            rule_id="R2_REVIEW",
+            description="Review rule",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.1,
+            outcome=RuleOutcome.REVIEW,
+            priority=20,
+        )
+        r_block = RiskRule(
+            rule_id="R3_BLOCK",
+            description="Block rule",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.1,
+            outcome=RuleOutcome.BLOCK,
+            priority=30,
+        )
+        # Pass rules in reverse order to engine
+        engine = RuleEngine([r_block, r_review, r_monitor])
+        evaluator = RiskEvaluator(rule_engine=engine)
+
+        res = evaluator.evaluate_transaction(sample_low_risk_row)
+
+        # Precedence: BLOCK enacted
+        assert res.action == DecisionAction.BLOCK
+        assert res.is_overridden is True
+        assert res.rule_action == RuleOutcome.BLOCK
+
+        # Deterministic order: sorted by priority (10, 20, 30)
+        assert res.rules_triggered == ("R1_MONITOR", "R2_REVIEW", "R3_BLOCK")
+
+    def test_single_transaction_hybrid_formats_consistency(
+        self, sample_low_risk_row: pd.DataFrame
+    ) -> None:
+        """Verify 1-row DataFrame, pd.Series, and dict produce identical hybrid results."""
+        rule = RiskRule(
+            rule_id="R_HIGH_AMT_REVIEW",
+            description="Review high amount",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=0.5,
+            outcome=RuleOutcome.REVIEW,
+        )
+        evaluator = RiskEvaluator(rule_engine=RuleEngine([rule]))
+
+        res_df = evaluator.evaluate_transaction(sample_low_risk_row)
+        res_series = evaluator.evaluate_transaction(sample_low_risk_row.iloc[0])
+        res_dict = evaluator.evaluate_transaction(sample_low_risk_row.iloc[0].to_dict())
+
+        assert res_df.action == res_series.action == res_dict.action == DecisionAction.REVIEW
+        assert res_df.is_overridden == res_series.is_overridden == res_dict.is_overridden is True
+        assert res_df.rule_action == res_series.rule_action == res_dict.rule_action == RuleOutcome.REVIEW
+        assert res_df.rules_triggered == res_series.rules_triggered == res_dict.rules_triggered == ("R_HIGH_AMT_REVIEW",)
+        assert res_df.model_score == res_series.model_score == res_dict.model_score
+
+    def test_batch_dataframe_hybrid_evaluation_and_summary_metrics(self) -> None:
+        """
+        Verify batch DataFrame hybrid evaluation across multiple rows with varied rule triggers,
+        and verify accurate summary aggregation (overridden_count, rule_trigger_counts).
+        """
+        r_block = RiskRule(
+            rule_id="RULE_BLOCK_HIGH_AMT",
+            description="Block high amount",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=1000.0,
+            outcome=RuleOutcome.BLOCK,
+            priority=10,
+        )
+        r_review = RiskRule(
+            rule_id="RULE_REVIEW_MID_AMT",
+            description="Review mid amount",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=500.0,
+            outcome=RuleOutcome.REVIEW,
+            priority=20,
+        )
+        r_monitor = RiskRule(
+            rule_id="RULE_MONITOR_UNUSUAL_HOUR",
+            description="Monitor unusual hours",
+            feature_name="hour_of_day",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=20.0,
+            outcome=RuleOutcome.MONITOR,
+            priority=30,
+        )
+        r_dormant = RiskRule(
+            rule_id="RULE_NEVER_TRIGGERED",
+            description="Unmatched rule",
+            feature_name="amount",
+            operator=RuleOperator.GREATER_THAN,
+            comparison_value=999999.0,
+            outcome=RuleOutcome.BLOCK,
+            priority=40,
+        )
+        engine = RuleEngine([r_block, r_review, r_monitor, r_dormant])
+        evaluator = RiskEvaluator(rule_engine=engine)
+
+        # Construct 4-row batch with low ML scores (all would be ML APPROVE)
+        base_row = {
+            col: "shopping_net" if col == "merchant_category" else "Engineer" if col == "job_category" else 1.0
+            for col in PREDICTIVE_FEATURE_COLUMNS
+        }
+
+        row0 = base_row.copy()
+        row0["amount"] = 50.0   # No rules triggered -> APPROVE (no override)
+        row0["hour_of_day"] = 10.0
+
+        row1 = base_row.copy()
+        row1["amount"] = 1500.0 # Triggers RULE_BLOCK_HIGH_AMT & RULE_REVIEW_MID_AMT -> BLOCK (override)
+        row1["hour_of_day"] = 10.0
+
+        row2 = base_row.copy()
+        row2["amount"] = 600.0  # Triggers RULE_REVIEW_MID_AMT -> REVIEW (override)
+        row2["hour_of_day"] = 10.0
+
+        row3 = base_row.copy()
+        row3["amount"] = 50.0   # Triggers RULE_MONITOR_UNUSUAL_HOUR -> APPROVE (no override)
+        row3["hour_of_day"] = 23.0
+
+        df_batch = pd.DataFrame([row0, row1, row2, row3])
+        results = evaluator.evaluate_dataframe(df_batch)
+
+        assert len(results) == 4
+
+        # Row 0: ML APPROVE, no rule
+        assert results[0].action == DecisionAction.APPROVE
+        assert results[0].is_overridden is False
+        assert results[0].rule_action is None
+        assert results[0].rules_triggered == ()
+
+        # Row 1: Overridden to BLOCK
+        assert results[1].action == DecisionAction.BLOCK
+        assert results[1].is_overridden is True
+        assert results[1].rule_action == RuleOutcome.BLOCK
+        assert results[1].rules_triggered == ("RULE_BLOCK_HIGH_AMT", "RULE_REVIEW_MID_AMT")
+
+        # Row 2: Overridden to REVIEW
+        assert results[2].action == DecisionAction.REVIEW
+        assert results[2].is_overridden is True
+        assert results[2].rule_action == RuleOutcome.REVIEW
+        assert results[2].rules_triggered == ("RULE_REVIEW_MID_AMT",)
+
+        # Row 3: APPROVE (monitor triggered)
+        assert results[3].action == DecisionAction.APPROVE
+        assert results[3].is_overridden is False
+        assert results[3].rule_action is None
+        assert results[3].rules_triggered == ("RULE_MONITOR_UNUSUAL_HOUR",)
+
+        # Summary verification
+        summary = evaluator.evaluate_dataframe_summary(df_batch)
+        assert summary.total_transactions == 4
+        assert summary.action_counts == {"APPROVE": 2, "REVIEW": 1, "BLOCK": 1}
+        assert summary.overridden_count == 2
+        assert summary.rule_trigger_counts == {
+            "RULE_BLOCK_HIGH_AMT": 1,
+            "RULE_REVIEW_MID_AMT": 2,
+            "RULE_MONITOR_UNUSUAL_HOUR": 1,
+            "RULE_NEVER_TRIGGERED": 0,
+        }
+
+        # Verify summary serialization
+        s_dict = summary.to_dict()
+        assert s_dict["overridden_count"] == 2
+        assert s_dict["rule_trigger_counts"]["RULE_REVIEW_MID_AMT"] == 2
+        assert s_dict["rule_trigger_counts"]["RULE_NEVER_TRIGGERED"] == 0
+
+    def test_missing_rule_feature_tolerance(self, sample_low_risk_row: pd.DataFrame) -> None:
+        """
+        Verify: When a rule references a feature NOT in the transaction (e.g. is_vpn_detected),
+        the rule evaluates to False, ML scores normally, and no error is raised.
+        """
+        rule = RiskRule(
+            rule_id="RULE_CUSTOM_NONEXISTENT",
+            description="Custom missing feature rule",
+            feature_name="is_vpn_detected",
+            operator=RuleOperator.IS_TRUE,
+            comparison_value=True,
+            outcome=RuleOutcome.BLOCK,
+        )
+        evaluator = RiskEvaluator(rule_engine=RuleEngine([rule]))
+        res = evaluator.evaluate_transaction(sample_low_risk_row)
+
+        assert res.action == DecisionAction.APPROVE
+        assert res.is_overridden is False
+        assert res.rule_action is None
+        assert res.rules_triggered == ()
+
+
+# =====================================================================
+# 7. Artifact Immutability Verification Test
 # =====================================================================
 
 class TestArtifactImmutability:

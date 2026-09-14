@@ -2,12 +2,12 @@
 Risk Evaluator Integration Module for Phase 6.
 
 Integrates the frozen Phase 4 XGBoost champion model and preprocessor with the
-configurable Phase 6 Decision Policy Engine, supporting end-to-end evaluation,
-metadata provenance, and batch summary metrics.
+configurable Phase 6 Decision Policy Engine and deterministic RuleEngine, supporting
+end-to-end hybrid evaluation, metadata provenance, and batch summary metrics.
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Dict, Any, List, Optional, Union, Mapping
@@ -24,10 +24,14 @@ from ml.risk_engine.config import (
     RiskTier,
     PolicyMode,
     DecisionPolicyConfig,
+    RuleOutcome,
 )
 from ml.risk_engine.policy import (
     DecisionResult,
     DecisionPolicyEngine,
+)
+from ml.risk_engine.rules import (
+    RuleEngine,
 )
 
 DEFAULT_MODEL_PATH = Path("ml/models/artifacts/champion_model.joblib")
@@ -52,6 +56,8 @@ class BatchDecisionSummary:
         policy_mode: Policy mode string used during batch evaluation.
         thresholds_applied: Exact threshold boundaries applied during evaluation.
         model_version: Provenance model version string if available.
+        overridden_count: Total number of transactions where a rule overrode the baseline ML policy action.
+        rule_trigger_counts: Absolute trigger count per business rule.
     """
     total_transactions: int
     action_counts: Mapping[str, int]
@@ -63,9 +69,21 @@ class BatchDecisionSummary:
     policy_mode: str
     thresholds_applied: Mapping[str, float]
     model_version: Optional[str]
+    overridden_count: int = 0
+    rule_trigger_counts: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Enforce deep immutability by wrapping all mapping fields in MappingProxyType."""
+        """Enforce deep immutability by wrapping all mapping fields in MappingProxyType and validating counts."""
+        if not isinstance(self.total_transactions, int) or isinstance(self.total_transactions, bool):
+            raise TypeError(f"total_transactions must be an integer, got {type(self.total_transactions).__name__}")
+        if self.total_transactions < 0:
+            raise ValueError(f"total_transactions cannot be negative, got {self.total_transactions}")
+
+        if not isinstance(self.overridden_count, int) or isinstance(self.overridden_count, bool):
+            raise TypeError(f"overridden_count must be an integer, got {type(self.overridden_count).__name__}")
+        if self.overridden_count < 0:
+            raise ValueError(f"overridden_count cannot be negative, got {self.overridden_count}")
+
         mapping_fields = [
             "action_counts",
             "action_percentages",
@@ -74,6 +92,7 @@ class BatchDecisionSummary:
             "model_score_stats",
             "risk_score_stats",
             "thresholds_applied",
+            "rule_trigger_counts",
         ]
         for f in mapping_fields:
             val = getattr(self, f)
@@ -94,6 +113,8 @@ class BatchDecisionSummary:
             "policy_mode": self.policy_mode,
             "thresholds_applied": dict(self.thresholds_applied),
             "model_version": self.model_version,
+            "overridden_count": self.overridden_count,
+            "rule_trigger_counts": dict(self.rule_trigger_counts),
         }
 
 
@@ -101,12 +122,13 @@ class RiskEvaluator:
     """
     End-to-end Risk Evaluator that consumes transaction payloads conforming to
     PREDICTIVE_FEATURE_COLUMNS, executes the frozen champion ML pipeline in read-only mode,
-    and returns structured DecisionResult instances from the DecisionPolicyEngine.
+    evaluates optional deterministic business rules via RuleEngine, and returns structured
+    DecisionResult instances with deterministic rule precedence and provenance metadata.
 
     Governance Rules:
     - Does NOT recompute or alter Phase 3 feature engineering.
-    - Operates strictly on pre-computed 55-predictor feature vectors.
-    - Extra metadata columns (e.g. transaction_id, account_id, timestamp, is_fraud) are safely ignored.
+    - Operates strictly on pre-computed 55-predictor feature vectors for ML inference.
+    - Extra metadata columns (e.g. transaction_id, account_id, timestamp, is_fraud) are safely ignored by ML.
     - Frozen champion artifacts are loaded in read-only mode and never modified.
     - Model outputs are treated as continuous ranking scores in [0.0, 1.0], not calibrated probabilities.
     - Does not mutate input DataFrames, Series, or dicts.
@@ -118,15 +140,18 @@ class RiskEvaluator:
         preprocessor_path: Union[str, Path] = DEFAULT_PREPROCESSOR_PATH,
         metadata_path: Optional[Union[str, Path]] = DEFAULT_METADATA_PATH,
         policy_config: Optional[DecisionPolicyConfig] = None,
+        rule_engine: Optional[RuleEngine] = None,
     ) -> None:
         """
-        Initialize the evaluator by loading frozen artifacts and configuring the policy engine.
+        Initialize the evaluator by loading frozen artifacts, configuring the policy engine,
+        and optionally attaching a deterministic RuleEngine.
 
         Args:
             model_path: Path to serialized champion model artifact.
             preprocessor_path: Path to serialized champion preprocessor artifact.
             metadata_path: Path to model metadata JSON artifact for trustworthy provenance version.
             policy_config: DecisionPolicyConfig instance. If None, default TRI_TIER config is used.
+            rule_engine: Optional RuleEngine instance for business rule matching and precedence overrides.
         """
         self.model_path = Path(model_path).resolve()
         self.preprocessor_path = Path(preprocessor_path).resolve()
@@ -150,10 +175,22 @@ class RiskEvaluator:
             model_version=self.model_version,
         )
 
+        # Initialize optional deterministic RuleEngine
+        if rule_engine is not None and not isinstance(rule_engine, RuleEngine):
+            raise TypeError(
+                f"rule_engine must be an instance of RuleEngine or None, got {type(rule_engine).__name__}"
+            )
+        self._rule_engine = rule_engine
+
     @property
     def config(self) -> DecisionPolicyConfig:
         """Return the immutable policy configuration."""
         return self.policy_engine.config
+
+    @property
+    def rule_engine(self) -> Optional[RuleEngine]:
+        """Return the configured RuleEngine instance or None."""
+        return self._rule_engine
 
     @staticmethod
     def _extract_trustworthy_model_version(metadata_path: Optional[Path]) -> Optional[str]:
@@ -214,7 +251,9 @@ class RiskEvaluator:
         """
         Evaluate a batch of transactions provided in a pandas DataFrame.
 
-        Preserves input row ordering.
+        Preserves input row ordering. If a RuleEngine is configured, evaluates deterministic
+        business rules against transaction feature rows and applies the precedence hierarchy:
+        BLOCK > REVIEW > MONITOR > Baseline ML Decision.
 
         Args:
             df: DataFrame containing the 55 predictive features (plus optional metadata columns).
@@ -225,7 +264,59 @@ class RiskEvaluator:
         X = self._extract_and_validate_features(df)
         X_trans = self.preprocessor.transform(X)
         model_scores = self.model.predict_proba(X_trans)
-        return self.policy_engine.evaluate_batch(model_scores)
+        baseline_results = self.policy_engine.evaluate_batch(model_scores)
+
+        if self._rule_engine is None or len(self._rule_engine) == 0:
+            return baseline_results
+
+        # Evaluate rules and apply deterministic precedence hierarchy
+        final_results: List[DecisionResult] = []
+        for i in range(len(df)):
+            ml_res = baseline_results[i]
+            row_features = df.iloc[i]
+            matches = self._rule_engine.evaluate(row_features)
+
+            if not matches:
+                final_results.append(ml_res)
+                continue
+
+            triggered_ids = tuple(m.rule_id for m in matches)
+            has_block = any(m.outcome == RuleOutcome.BLOCK for m in matches)
+            has_review = any(m.outcome == RuleOutcome.REVIEW for m in matches)
+
+            final_action = ml_res.action
+            is_overridden = False
+            rule_action: Optional[RuleOutcome] = None
+
+            if has_block:
+                if ml_res.action != DecisionAction.BLOCK:
+                    final_action = DecisionAction.BLOCK
+                    is_overridden = True
+                    rule_action = RuleOutcome.BLOCK
+            elif has_review:
+                if ml_res.action == DecisionAction.APPROVE:
+                    final_action = DecisionAction.REVIEW
+                    is_overridden = True
+                    rule_action = RuleOutcome.REVIEW
+
+            final_results.append(
+                DecisionResult(
+                    action=final_action,
+                    risk_score=ml_res.risk_score,
+                    risk_tier=ml_res.risk_tier,
+                    model_score=ml_res.model_score,
+                    policy_mode=ml_res.policy_mode,
+                    reason=ml_res.reason,
+                    thresholds_applied=ml_res.thresholds_applied,
+                    model_version=ml_res.model_version,
+                    reason_codes=ml_res.reason_codes,
+                    rules_triggered=triggered_ids,
+                    is_overridden=is_overridden,
+                    rule_action=rule_action,
+                )
+            )
+
+        return final_results
 
     def evaluate_transaction(
         self, df_or_series: Union[pd.DataFrame, pd.Series, Dict[str, Any]]
@@ -233,7 +324,8 @@ class RiskEvaluator:
         """
         Evaluate a single transaction provided as a 1-row DataFrame, Series, or Dictionary.
 
-        Metadata columns (e.g. transaction_id, account_id, timestamp, is_fraud) are safely ignored.
+        Metadata columns (e.g. transaction_id, account_id, timestamp, is_fraud) are safely ignored by ML,
+        but available for rule matching.
 
         Args:
             df_or_series: 1-row DataFrame, Series, or Dictionary containing the 55 features.
@@ -262,13 +354,15 @@ class RiskEvaluator:
 
     def evaluate_dataframe_summary(self, df: pd.DataFrame) -> BatchDecisionSummary:
         """
-        Evaluate a batch DataFrame and compute comprehensive summary statistics.
+        Evaluate a batch DataFrame and compute comprehensive summary statistics including
+        rule triggers and decision overrides.
 
         Args:
             df: DataFrame containing the 55 predictive features (plus optional metadata).
 
         Returns:
-            BatchDecisionSummary: Aggregated metrics across actions, risk tiers, and score statistics.
+            BatchDecisionSummary: Aggregated metrics across actions, risk tiers, score statistics,
+                                  overridden counts, and rule trigger counts.
 
         Raises:
             ValueError: If df is empty or invalid.
@@ -309,6 +403,15 @@ class RiskEvaluator:
             "max": int(np.max(risk_scores)),
         }
 
+        # Rule overrides & trigger counts
+        overridden_count = sum(1 for r in results if r.is_overridden)
+        rule_trigger_counts: Dict[str, int] = {}
+        if self._rule_engine is not None:
+            rule_trigger_counts = {r.rule_id: 0 for r in self._rule_engine.rules}
+        for r in results:
+            for r_id in r.rules_triggered:
+                rule_trigger_counts[r_id] = rule_trigger_counts.get(r_id, 0) + 1
+
         return BatchDecisionSummary(
             total_transactions=total,
             action_counts=action_counts,
@@ -323,4 +426,6 @@ class RiskEvaluator:
                 "block_threshold": self.config.block_threshold,
             },
             model_version=self.model_version,
+            overridden_count=overridden_count,
+            rule_trigger_counts=rule_trigger_counts,
         )

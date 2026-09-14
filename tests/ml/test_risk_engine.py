@@ -22,6 +22,7 @@ from ml.risk_engine.config import (
     PolicyMode,
     DecisionPolicyConfig,
     DecisionReasonCode,
+    RuleOutcome,
 )
 from ml.risk_engine.normalization import (
     normalize_model_score,
@@ -599,7 +600,7 @@ class TestDecisionResult:
         assert res.reason_codes == (DecisionReasonCode.BLOCK_THRESHOLD_REACHED,)
 
     def test_to_dict_serialization(self) -> None:
-        """Verify to_dict produces a clean dictionary with string enum values, provenance, and reason_codes."""
+        """Verify to_dict produces a clean dictionary with string enum values, provenance, reason_codes, and rule metadata."""
         engine = DecisionPolicyEngine(model_version="1.0.0")
         res = engine.evaluate(0.78)
         d = res.to_dict()
@@ -619,4 +620,99 @@ class TestDecisionResult:
             },
             "model_version": "1.0.0",
             "reason_codes": ["BLOCK_THRESHOLD_REACHED"],
+            "rules_triggered": [],
+            "is_overridden": False,
+            "rule_action": None,
         }
+
+    def test_rules_triggered_immutability(self) -> None:
+        """Verify rules_triggered is an immutable tuple and cannot be mutated."""
+        res = DecisionResult(
+            action=DecisionAction.BLOCK,
+            risk_score=90,
+            risk_tier=RiskTier.CRITICAL,
+            model_score=0.90,
+            policy_mode=PolicyMode.TRI_TIER,
+            reason="Blocked by rule",
+            rules_triggered=("RULE_SANCTIONS_BLOCK", "RULE_VELOCITY_MONITOR"),
+            is_overridden=True,
+            rule_action=RuleOutcome.BLOCK,
+        )
+        assert isinstance(res.rules_triggered, tuple)
+        assert res.rules_triggered == ("RULE_SANCTIONS_BLOCK", "RULE_VELOCITY_MONITOR")
+        assert res.is_overridden is True
+        assert res.rule_action == RuleOutcome.BLOCK
+
+        # Immutability check
+        with pytest.raises(Exception):
+            res.rules_triggered = ("ANOTHER_RULE",)  # type: ignore
+
+    def test_invalid_rule_metadata_types(self) -> None:
+        """Verify DecisionResult rejects invalid types for rule provenance fields."""
+        # Non-sequence rules_triggered
+        with pytest.raises(TypeError, match="rules_triggered must be a tuple or list"):
+            DecisionResult(
+                action=DecisionAction.APPROVE,
+                risk_score=10,
+                risk_tier=RiskTier.LOW,
+                model_score=0.10,
+                policy_mode=PolicyMode.TRI_TIER,
+                reason="test",
+                rules_triggered="NOT_A_LIST",  # type: ignore
+            )
+
+        # Non-string element in rules_triggered
+        with pytest.raises(TypeError, match="rules_triggered elements must be strings"):
+            DecisionResult(
+                action=DecisionAction.APPROVE,
+                risk_score=10,
+                risk_tier=RiskTier.LOW,
+                model_score=0.10,
+                policy_mode=PolicyMode.TRI_TIER,
+                reason="test",
+                rules_triggered=[123],  # type: ignore
+            )
+
+        # Non-boolean is_overridden
+        with pytest.raises(TypeError, match="is_overridden must be a boolean"):
+            DecisionResult(
+                action=DecisionAction.APPROVE,
+                risk_score=10,
+                risk_tier=RiskTier.LOW,
+                model_score=0.10,
+                policy_mode=PolicyMode.TRI_TIER,
+                reason="test",
+                is_overridden="True",  # type: ignore
+            )
+
+        # Invalid rule_action
+        with pytest.raises(ValueError, match="Invalid rule_action"):
+            DecisionResult(
+                action=DecisionAction.APPROVE,
+                risk_score=10,
+                risk_tier=RiskTier.LOW,
+                model_score=0.10,
+                policy_mode=PolicyMode.TRI_TIER,
+                reason="test",
+                rule_action="INVALID_OUTCOME",  # type: ignore
+            )
+
+    def test_to_dict_with_overridden_rule_action(self) -> None:
+        """Verify to_dict serialization when a decision is overridden by a rule."""
+        res = DecisionResult(
+            action=DecisionAction.BLOCK,
+            risk_score=20,
+            risk_tier=RiskTier.LOW,
+            model_score=0.20,
+            policy_mode=PolicyMode.TRI_TIER,
+            reason="Approved below review threshold.",
+            rules_triggered=("RULE_SANCTIONS_MATCH",),
+            is_overridden=True,
+            rule_action=RuleOutcome.BLOCK,
+        )
+        d = res.to_dict()
+        assert d["action"] == "BLOCK"
+        assert d["is_overridden"] is True
+        assert d["rule_action"] == "BLOCK"
+        assert d["rules_triggered"] == ["RULE_SANCTIONS_MATCH"]
+        assert isinstance(d["rules_triggered"], list)

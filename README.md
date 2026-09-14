@@ -97,13 +97,13 @@ This platform bridges these operational gaps with an integrated, production-styl
 
 | Phase | Phase Name | Status | Key Deliverables |
 | :--- | :--- | :--- | :--- |
-| **Phase 0** | **Project Foundation & Architecture** | 🟡 **Active** | Scaffolding, docs (`README`, `PROJECT_SPEC`, `ARCHITECTURE`, `PROJECT_STATUS`), `.gitignore`, `.env.example`, Git initial commit. |
-| **Phase 1** | **Data Pipeline & Ingestion** | ⚪ *Upcoming* | Fraud transaction ingestion, synthetic generation, schema validation, data partitioning. |
-| **Phase 2** | **Exploratory Data Analysis (EDA)** | ⚪ *Upcoming* | Class imbalance analysis, anomaly distributions, temporal behaviors, domain insight report. |
-| **Phase 3** | **Behavioral Feature Engineering** | ⚪ *Upcoming* | Velocity features, rolling statistics, geo/IP distance delta, device consistency metrics. |
-| **Phase 4** | **Baseline & Advanced ML Models** | ⚪ *Upcoming* | Logistic Regression, Random Forest, LightGBM, and XGBoost training & cross-validation. |
-| **Phase 5** | **Imbalance Handling & Cost Optimization** | ⚪ *Upcoming* | PR-AUC optimization, focal/weighted loss, cost-sensitive threshold matrix tuning. |
-| **Phase 6** | **Risk Engine & Decision Framework** | ⚪ *Upcoming* | 0–100 risk score calibration, rule engine overrides, Approve / Review / Block policy engine. |
+| **Phase 0** | **Project Foundation & Architecture** | 🟢 **Completed** | Scaffolding, docs (`README`, `PROJECT_SPEC`, `ARCHITECTURE`, `PROJECT_STATUS`), `.gitignore`, `.env.example`, Git initial commit. |
+| **Phase 1** | **Data Pipeline & Ingestion** | 🟢 **Completed** | Ingestion pipeline, temporal chronological sorting, canonical 15-field schema, time-aware train/val/test splits. |
+| **Phase 2** | **Exploratory Data Analysis (EDA)** | 🟢 **Completed** | Class imbalance analysis, anomaly distributions, temporal behaviors, domain insights report. |
+| **Phase 3** | **Behavioral Feature Engineering** | 🟢 **Completed** | 55 point-in-time features: velocity counters, rolling statistics, geo/IP travel speed, deviation metrics. |
+| **Phase 4** | **Baseline & Advanced ML Models** | 🟢 **Completed** | XGBoost champion ($0.9619$ PR-AUC), LightGBM, Random Forest, Logistic Regression with process isolation. |
+| **Phase 5** | **Imbalance Handling & Cost Optimization** | 🟢 **Completed** | Cost matrix optimization ($\tau^*=0.78$), $31.8\%$ OOT cost reduction, sensitivity curves, leakage governance. |
+| **Phase 6** | **Risk Engine & Decision Framework** | 🟢 **Completed** | 0–100 risk scoring, tri-tier policy, deterministic rule engine, 6-rule standard catalog, empirical benchmark. |
 | **Phase 7** | **Explainability & Reason Codes** | ⚪ *Upcoming* | TreeSHAP feature attributions, local explanation extraction, human-readable reason codes. |
 | **Phase 8** | **Fraud Detection API (FastAPI)** | ⚪ *Upcoming* | Production REST API endpoints (`/evaluate`, `/score`, `/health`), Pydantic validation schemas. |
 | **Phase 9** | **Database & Persistence (PostgreSQL)** | ⚪ *Upcoming* | PostgreSQL schema modeling, migrations, transaction & audit logging, case records. |
