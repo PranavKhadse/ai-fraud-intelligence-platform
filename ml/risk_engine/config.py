@@ -50,6 +50,21 @@ class PolicyMode(str, Enum):
     TRI_TIER = "TRI_TIER"
 
 
+class DecisionReasonCode(str, Enum):
+    """
+    Enumeration of immutable, deterministic policy-level decision reason codes.
+
+    Restricted strictly to policy routing and threshold relationships.
+    """
+    BELOW_REVIEW_THRESHOLD = "BELOW_REVIEW_THRESHOLD"
+    REVIEW_THRESHOLD_REACHED = "REVIEW_THRESHOLD_REACHED"
+    BLOCK_THRESHOLD_REACHED = "BLOCK_THRESHOLD_REACHED"
+    BINARY_AUTO_BLOCK_THRESHOLD_REACHED = "BINARY_AUTO_BLOCK_THRESHOLD_REACHED"
+    BINARY_AUTO_APPROVE_BELOW_BLOCK_THRESHOLD = (
+        "BINARY_AUTO_APPROVE_BELOW_BLOCK_THRESHOLD"
+    )
+
+
 @dataclass(frozen=True)
 class DecisionPolicyConfig:
     """

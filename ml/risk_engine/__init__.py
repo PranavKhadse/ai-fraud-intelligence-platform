@@ -10,6 +10,7 @@ from ml.risk_engine.config import (
     RiskTier,
     PolicyMode,
     DecisionPolicyConfig,
+    DecisionReasonCode,
 )
 from ml.risk_engine.normalization import (
     normalize_model_score,
@@ -30,6 +31,7 @@ __all__ = [
     "RiskTier",
     "PolicyMode",
     "DecisionPolicyConfig",
+    "DecisionReasonCode",
     "normalize_model_score",
     "normalize_model_scores",
     "risk_tier_from_score",

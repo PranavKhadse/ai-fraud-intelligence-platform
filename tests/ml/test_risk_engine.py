@@ -21,6 +21,7 @@ from ml.risk_engine.config import (
     RiskTier,
     PolicyMode,
     DecisionPolicyConfig,
+    DecisionReasonCode,
 )
 from ml.risk_engine.normalization import (
     normalize_model_score,
@@ -323,11 +324,33 @@ class TestRiskTierMapping:
 
 
 # =====================================================================
-# 5. Decision Policy Engine & Routing Tests
+# 5. Decision Reason Codes Tests
+# =====================================================================
+
+class TestDecisionReasonCode:
+    """Test suite for DecisionReasonCode enum definitions, string values, and conversion."""
+
+    def test_all_five_enum_values(self) -> None:
+        """Verify all five policy reason codes are defined with exact expected string values."""
+        assert DecisionReasonCode.BELOW_REVIEW_THRESHOLD == "BELOW_REVIEW_THRESHOLD"
+        assert DecisionReasonCode.REVIEW_THRESHOLD_REACHED == "REVIEW_THRESHOLD_REACHED"
+        assert DecisionReasonCode.BLOCK_THRESHOLD_REACHED == "BLOCK_THRESHOLD_REACHED"
+        assert DecisionReasonCode.BINARY_AUTO_BLOCK_THRESHOLD_REACHED == "BINARY_AUTO_BLOCK_THRESHOLD_REACHED"
+        assert DecisionReasonCode.BINARY_AUTO_APPROVE_BELOW_BLOCK_THRESHOLD == "BINARY_AUTO_APPROVE_BELOW_BLOCK_THRESHOLD"
+        assert len(DecisionReasonCode) == 5
+
+    def test_invalid_enum_conversion_raises_error(self) -> None:
+        """Verify invalid strings cannot be converted to DecisionReasonCode."""
+        with pytest.raises(ValueError):
+            DecisionReasonCode("INVALID_REASON_CODE")
+
+
+# =====================================================================
+# 6. Decision Policy Engine & Routing Tests
 # =====================================================================
 
 class TestDecisionPolicyEngine:
-    """Test suite for DecisionPolicyEngine routing, modes, and batch evaluation."""
+    """Test suite for DecisionPolicyEngine routing, modes, reason codes, and batch evaluation."""
 
     def test_engine_initialization_defaults(self) -> None:
         """Verify default engine setup uses default DecisionPolicyConfig."""
@@ -343,17 +366,17 @@ class TestDecisionPolicyEngine:
             DecisionPolicyEngine(config="default")  # type: ignore
 
     @pytest.mark.parametrize(
-        "model_score, expected_action, expected_risk_score, expected_tier",
+        "model_score, expected_action, expected_risk_score, expected_tier, expected_reason_code",
         [
-            (0.00, DecisionAction.APPROVE, 0, RiskTier.LOW),
-            (0.10, DecisionAction.APPROVE, 10, RiskTier.LOW),
-            (0.34, DecisionAction.APPROVE, 34, RiskTier.LOW),
-            (0.35, DecisionAction.REVIEW, 35, RiskTier.MEDIUM),
-            (0.50, DecisionAction.REVIEW, 50, RiskTier.MEDIUM),
-            (0.77, DecisionAction.REVIEW, 77, RiskTier.HIGH),
-            (0.78, DecisionAction.BLOCK, 78, RiskTier.CRITICAL),
-            (0.94, DecisionAction.BLOCK, 94, RiskTier.CRITICAL),
-            (1.00, DecisionAction.BLOCK, 100, RiskTier.CRITICAL),
+            (0.00, DecisionAction.APPROVE, 0, RiskTier.LOW, DecisionReasonCode.BELOW_REVIEW_THRESHOLD),
+            (0.10, DecisionAction.APPROVE, 10, RiskTier.LOW, DecisionReasonCode.BELOW_REVIEW_THRESHOLD),
+            (0.34, DecisionAction.APPROVE, 34, RiskTier.LOW, DecisionReasonCode.BELOW_REVIEW_THRESHOLD),
+            (0.35, DecisionAction.REVIEW, 35, RiskTier.MEDIUM, DecisionReasonCode.REVIEW_THRESHOLD_REACHED),
+            (0.50, DecisionAction.REVIEW, 50, RiskTier.MEDIUM, DecisionReasonCode.REVIEW_THRESHOLD_REACHED),
+            (0.77, DecisionAction.REVIEW, 77, RiskTier.HIGH, DecisionReasonCode.REVIEW_THRESHOLD_REACHED),
+            (0.78, DecisionAction.BLOCK, 78, RiskTier.CRITICAL, DecisionReasonCode.BLOCK_THRESHOLD_REACHED),
+            (0.94, DecisionAction.BLOCK, 94, RiskTier.CRITICAL, DecisionReasonCode.BLOCK_THRESHOLD_REACHED),
+            (1.00, DecisionAction.BLOCK, 100, RiskTier.CRITICAL, DecisionReasonCode.BLOCK_THRESHOLD_REACHED),
         ],
     )
     def test_tri_tier_policy_routing(
@@ -362,8 +385,9 @@ class TestDecisionPolicyEngine:
         expected_action: DecisionAction,
         expected_risk_score: int,
         expected_tier: RiskTier,
+        expected_reason_code: DecisionReasonCode,
     ) -> None:
-        """Verify complete tri-tier decision routing at all critical threshold points."""
+        """Verify complete tri-tier decision routing and deterministic reason codes at all critical threshold points."""
         engine = DecisionPolicyEngine(model_version="1.0.0")
         res = engine.evaluate(model_score)
         assert res.action == expected_action
@@ -373,27 +397,34 @@ class TestDecisionPolicyEngine:
         assert res.policy_mode == PolicyMode.TRI_TIER
         assert res.model_version == "1.0.0"
         assert res.thresholds_applied == {"review_threshold": 0.35, "block_threshold": 0.78}
+        assert res.reason_codes == (expected_reason_code,)
         assert isinstance(res.reason, str) and len(res.reason) > 0
 
     @pytest.mark.parametrize(
-        "model_score, expected_action",
+        "model_score, expected_action, expected_reason_code",
         [
-            (0.00, DecisionAction.APPROVE),
-            (0.35, DecisionAction.APPROVE),
-            (0.50, DecisionAction.APPROVE),
-            (0.77, DecisionAction.APPROVE),
-            (0.78, DecisionAction.BLOCK),
-            (0.94, DecisionAction.BLOCK),
-            (1.00, DecisionAction.BLOCK),
+            (0.00, DecisionAction.APPROVE, DecisionReasonCode.BINARY_AUTO_APPROVE_BELOW_BLOCK_THRESHOLD),
+            (0.35, DecisionAction.APPROVE, DecisionReasonCode.BINARY_AUTO_APPROVE_BELOW_BLOCK_THRESHOLD),
+            (0.50, DecisionAction.APPROVE, DecisionReasonCode.BINARY_AUTO_APPROVE_BELOW_BLOCK_THRESHOLD),
+            (0.77, DecisionAction.APPROVE, DecisionReasonCode.BINARY_AUTO_APPROVE_BELOW_BLOCK_THRESHOLD),
+            (0.78, DecisionAction.BLOCK, DecisionReasonCode.BINARY_AUTO_BLOCK_THRESHOLD_REACHED),
+            (0.94, DecisionAction.BLOCK, DecisionReasonCode.BINARY_AUTO_BLOCK_THRESHOLD_REACHED),
+            (1.00, DecisionAction.BLOCK, DecisionReasonCode.BINARY_AUTO_BLOCK_THRESHOLD_REACHED),
         ],
     )
-    def test_binary_auto_policy_routing(self, model_score: float, expected_action: DecisionAction) -> None:
-        """Verify binary auto decision routing routes all scores below block_threshold to APPROVE."""
+    def test_binary_auto_policy_routing(
+        self,
+        model_score: float,
+        expected_action: DecisionAction,
+        expected_reason_code: DecisionReasonCode,
+    ) -> None:
+        """Verify binary auto decision routing and deterministic reason codes above and below block_threshold."""
         config = DecisionPolicyConfig(policy_mode=PolicyMode.BINARY_AUTO, block_threshold=0.78)
         engine = DecisionPolicyEngine(config=config)
         res = engine.evaluate(model_score)
         assert res.action == expected_action
         assert res.policy_mode == PolicyMode.BINARY_AUTO
+        assert res.reason_codes == (expected_reason_code,)
 
     def test_zero_width_review_band(self) -> None:
         """Verify routing when review_threshold == block_threshold (zero-width review band)."""
@@ -405,10 +436,12 @@ class TestDecisionPolicyEngine:
         engine = DecisionPolicyEngine(config=config)
         res_below = engine.evaluate(0.779)
         assert res_below.action == DecisionAction.APPROVE
+        assert res_below.reason_codes == (DecisionReasonCode.BELOW_REVIEW_THRESHOLD,)
         assert "zero-width review band" in res_below.reason
 
         res_at = engine.evaluate(0.78)
         assert res_at.action == DecisionAction.BLOCK
+        assert res_at.reason_codes == (DecisionReasonCode.BLOCK_THRESHOLD_REACHED,)
 
     def test_custom_thresholds_routing(self) -> None:
         """Verify routing with custom thresholds."""
@@ -419,26 +452,33 @@ class TestDecisionPolicyEngine:
         )
         engine = DecisionPolicyEngine(config=config)
         assert engine.evaluate(0.19).action == DecisionAction.APPROVE
+        assert engine.evaluate(0.19).reason_codes == (DecisionReasonCode.BELOW_REVIEW_THRESHOLD,)
         assert engine.evaluate(0.20).action == DecisionAction.REVIEW
+        assert engine.evaluate(0.20).reason_codes == (DecisionReasonCode.REVIEW_THRESHOLD_REACHED,)
         assert engine.evaluate(0.59).action == DecisionAction.REVIEW
+        assert engine.evaluate(0.59).reason_codes == (DecisionReasonCode.REVIEW_THRESHOLD_REACHED,)
         assert engine.evaluate(0.60).action == DecisionAction.BLOCK
+        assert engine.evaluate(0.60).reason_codes == (DecisionReasonCode.BLOCK_THRESHOLD_REACHED,)
 
     def test_batch_evaluation(self) -> None:
-        """Verify batch evaluation preserves ordering and outputs."""
+        """Verify batch evaluation preserves ordering, outputs, and reason codes."""
         engine = DecisionPolicyEngine(model_version="1.0.0")
         scores = np.array([0.10, 0.40, 0.85], dtype=np.float64)
         results = engine.evaluate_batch(scores)
         assert len(results) == 3
         assert results[0].action == DecisionAction.APPROVE
+        assert results[0].reason_codes == (DecisionReasonCode.BELOW_REVIEW_THRESHOLD,)
         assert results[1].action == DecisionAction.REVIEW
+        assert results[1].reason_codes == (DecisionReasonCode.REVIEW_THRESHOLD_REACHED,)
         assert results[2].action == DecisionAction.BLOCK
+        assert results[2].reason_codes == (DecisionReasonCode.BLOCK_THRESHOLD_REACHED,)
         for r in results:
             assert r.model_version == "1.0.0"
             assert r.thresholds_applied == {"review_threshold": 0.35, "block_threshold": 0.78}
 
 
 # =====================================================================
-# 6. DecisionResult Structure & Serialization Tests
+# 7. DecisionResult Structure & Serialization Tests
 # =====================================================================
 
 class TestDecisionResult:
@@ -460,6 +500,66 @@ class TestDecisionResult:
         # 3. Nested mapping key deletion is rejected
         with pytest.raises((TypeError, Exception)):
             del res.thresholds_applied["review_threshold"]  # type: ignore
+
+    def test_reason_codes_immutability(self) -> None:
+        """Verify reason_codes is an immutable tuple and cannot be mutated."""
+        engine = DecisionPolicyEngine()
+        res = engine.evaluate(0.50)
+
+        assert isinstance(res.reason_codes, tuple)
+        assert res.reason_codes == (DecisionReasonCode.REVIEW_THRESHOLD_REACHED,)
+
+        # Top-level attribute mutation rejected
+        with pytest.raises(Exception):
+            res.reason_codes = (DecisionReasonCode.BLOCK_THRESHOLD_REACHED,)  # type: ignore
+
+    def test_invalid_reason_codes_types(self) -> None:
+        """Verify DecisionResult rejects non-sequence or non-DecisionReasonCode elements."""
+        with pytest.raises(TypeError, match="reason_codes must be a tuple or list"):
+            DecisionResult(
+                action=DecisionAction.APPROVE,
+                risk_score=10,
+                risk_tier=RiskTier.LOW,
+                model_score=0.10,
+                policy_mode=PolicyMode.TRI_TIER,
+                reason="test",
+                reason_codes="INVALID_TYPE",  # type: ignore
+            )
+
+        with pytest.raises(TypeError, match="reason_codes elements must be DecisionReasonCode"):
+            DecisionResult(
+                action=DecisionAction.APPROVE,
+                risk_score=10,
+                risk_tier=RiskTier.LOW,
+                model_score=0.10,
+                policy_mode=PolicyMode.TRI_TIER,
+                reason="test",
+                reason_codes=["INVALID_REASON"],  # type: ignore
+            )
+
+        with pytest.raises(TypeError, match="reason_codes elements must be DecisionReasonCode"):
+            DecisionResult(
+                action=DecisionAction.APPROVE,
+                risk_score=10,
+                risk_tier=RiskTier.LOW,
+                model_score=0.10,
+                policy_mode=PolicyMode.TRI_TIER,
+                reason="test",
+                reason_codes=[123],  # type: ignore
+            )
+
+    def test_backward_compatibility_default_reason_codes(self) -> None:
+        """Verify constructing DecisionResult without reason_codes defaults to empty tuple."""
+        res = DecisionResult(
+            action=DecisionAction.APPROVE,
+            risk_score=10,
+            risk_tier=RiskTier.LOW,
+            model_score=0.10,
+            policy_mode=PolicyMode.TRI_TIER,
+            reason="Approved below review threshold.",
+        )
+        assert res.reason_codes == ()
+        assert res.to_dict()["reason_codes"] == []
 
     def test_thresholds_applied_mapping_compatibility(self) -> None:
         """Verify read-only MappingProxyType supports standard dictionary read operations."""
@@ -491,13 +591,15 @@ class TestDecisionResult:
         # Mutate the dictionary returned by to_dict
         d["thresholds_applied"]["block_threshold"] = 0.99
         d["action"] = "APPROVE"
+        d["reason_codes"].append("SOME_OTHER_CODE")
 
         # Ensure original DecisionResult is unaffected
         assert res.thresholds_applied["block_threshold"] == 0.78
         assert res.action == DecisionAction.BLOCK
+        assert res.reason_codes == (DecisionReasonCode.BLOCK_THRESHOLD_REACHED,)
 
     def test_to_dict_serialization(self) -> None:
-        """Verify to_dict produces a clean dictionary with string enum values and provenance."""
+        """Verify to_dict produces a clean dictionary with string enum values, provenance, and reason_codes."""
         engine = DecisionPolicyEngine(model_version="1.0.0")
         res = engine.evaluate(0.78)
         d = res.to_dict()
@@ -516,4 +618,5 @@ class TestDecisionResult:
                 "block_threshold": 0.78,
             },
             "model_version": "1.0.0",
+            "reason_codes": ["BLOCK_THRESHOLD_REACHED"],
         }

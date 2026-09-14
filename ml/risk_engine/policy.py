@@ -7,7 +7,7 @@ the operational transaction action (APPROVE, REVIEW, or BLOCK).
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Dict, Any, List, Optional, Union, Mapping
+from typing import Dict, Any, List, Optional, Union, Mapping, Tuple
 import numpy as np
 
 from ml.risk_engine.config import (
@@ -15,6 +15,7 @@ from ml.risk_engine.config import (
     RiskTier,
     PolicyMode,
     DecisionPolicyConfig,
+    DecisionReasonCode,
 )
 from ml.risk_engine.normalization import (
     normalize_model_score,
@@ -37,6 +38,7 @@ class DecisionResult:
         reason: Human-readable explanation of the policy decision boundary.
         thresholds_applied: Exact raw score threshold boundaries applied during evaluation (read-only mapping).
         model_version: Provenance version of the champion model artifact if available.
+        reason_codes: Immutable tuple of policy-level decision reason codes.
     """
     action: DecisionAction
     risk_score: int
@@ -46,6 +48,7 @@ class DecisionResult:
     reason: str
     thresholds_applied: Mapping[str, float] = field(default_factory=dict)
     model_version: Optional[str] = None
+    reason_codes: Tuple[DecisionReasonCode, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         """Defensive validation of result fields and enforcement of deep immutability."""
@@ -73,6 +76,16 @@ class DecisionResult:
             self, "thresholds_applied", MappingProxyType(dict(self.thresholds_applied))
         )
 
+        # Validate and enforce tuple immutability on reason_codes
+        if not isinstance(self.reason_codes, (tuple, list)):
+            raise TypeError(f"reason_codes must be a tuple or list, got {type(self.reason_codes).__name__}")
+        for code in self.reason_codes:
+            if not isinstance(code, DecisionReasonCode):
+                raise TypeError(
+                    f"reason_codes elements must be DecisionReasonCode enum instances, got {type(code).__name__}"
+                )
+        object.__setattr__(self, "reason_codes", tuple(self.reason_codes))
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert decision result to a clean JSON-serializable dictionary."""
         return {
@@ -86,6 +99,7 @@ class DecisionResult:
                 k: round(float(v), 6) for k, v in self.thresholds_applied.items()
             },
             "model_version": self.model_version,
+            "reason_codes": [code.value for code in self.reason_codes],
         }
 
 
@@ -132,12 +146,12 @@ class DecisionPolicyEngine:
 
         Routing Logic:
         - TRI_TIER Mode:
-            - model_score >= block_threshold  -> BLOCK
-            - model_score >= review_threshold -> REVIEW
-            - else                            -> APPROVE
+            - model_score >= block_threshold  -> BLOCK (BLOCK_THRESHOLD_REACHED)
+            - model_score >= review_threshold -> REVIEW (REVIEW_THRESHOLD_REACHED)
+            - else                            -> APPROVE (BELOW_REVIEW_THRESHOLD)
         - BINARY_AUTO Mode:
-            - model_score >= block_threshold  -> BLOCK
-            - else                            -> APPROVE
+            - model_score >= block_threshold  -> BLOCK (BINARY_AUTO_BLOCK_THRESHOLD_REACHED)
+            - else                            -> APPROVE (BINARY_AUTO_APPROVE_BELOW_BLOCK_THRESHOLD)
 
         Args:
             model_score: Raw model ranking score in [0.0, 1.0].
@@ -166,18 +180,21 @@ class DecisionPolicyEngine:
         if mode == PolicyMode.TRI_TIER:
             if score_val >= b_thresh:
                 action = DecisionAction.BLOCK
+                reason_codes = (DecisionReasonCode.BLOCK_THRESHOLD_REACHED,)
                 reason = (
                     f"Model score ({score_val:.4f}) meets or exceeds block threshold ({b_thresh:.4f}). "
                     f"Action: BLOCK."
                 )
             elif score_val >= r_thresh:
                 action = DecisionAction.REVIEW
+                reason_codes = (DecisionReasonCode.REVIEW_THRESHOLD_REACHED,)
                 reason = (
                     f"Model score ({score_val:.4f}) meets or exceeds review threshold ({r_thresh:.4f}) "
                     f"but is below block threshold ({b_thresh:.4f}). Action: REVIEW."
                 )
             else:
                 action = DecisionAction.APPROVE
+                reason_codes = (DecisionReasonCode.BELOW_REVIEW_THRESHOLD,)
                 if r_thresh == b_thresh:
                     reason = (
                         f"Model score ({score_val:.4f}) is below review/block threshold ({b_thresh:.4f}) "
@@ -191,12 +208,14 @@ class DecisionPolicyEngine:
         elif mode == PolicyMode.BINARY_AUTO:
             if score_val >= b_thresh:
                 action = DecisionAction.BLOCK
+                reason_codes = (DecisionReasonCode.BINARY_AUTO_BLOCK_THRESHOLD_REACHED,)
                 reason = (
                     f"Model score ({score_val:.4f}) meets or exceeds block threshold ({b_thresh:.4f}) "
                     f"in BINARY_AUTO mode. Action: BLOCK."
                 )
             else:
                 action = DecisionAction.APPROVE
+                reason_codes = (DecisionReasonCode.BINARY_AUTO_APPROVE_BELOW_BLOCK_THRESHOLD,)
                 reason = (
                     f"Model score ({score_val:.4f}) is below block threshold ({b_thresh:.4f}) "
                     f"in BINARY_AUTO mode. Action: APPROVE."
@@ -213,6 +232,7 @@ class DecisionPolicyEngine:
             reason=reason,
             thresholds_applied=thresholds_applied,
             model_version=self._model_version,
+            reason_codes=reason_codes,
         )
 
     def evaluate_batch(self, model_scores: np.ndarray) -> List[DecisionResult]:
