@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md — Project Tracking & Status Dashboard
 
 > **Platform:** AI-Powered Fraud Detection & Risk Intelligence Platform
-> **Last Updated:** Current Date (Phase 6 Implementation Completed)
-> **Current Active Phase:** **Phase 6 — Risk Engine & Decision Framework (Completed)**
+> **Last Updated:** Current Date (Phase 7 Implementation Completed)
+> **Current Active Phase:** **Phase 7 — Explainability & Reason Codes (Completed)**
 
 ---
 
@@ -16,9 +16,9 @@
 | **Phase 3** | **Behavioral Feature Engineering** | 🟢 **Completed** | Milestone 3 |
 | **Phase 4** | **Baseline & Advanced ML Models** | 🟢 **Completed** | Milestone 4 |
 | **Phase 5** | **Imbalance Handling & Cost Optimization** | 🟢 **Completed** | Milestone 5 |
-| **Phase 6** | **Risk Engine & Decision Framework** | 🟢 **Completed** | Milestone 6 (Current) |
-| **Phase 7** | **Explainability & Reason Codes** | ⚪ Pending | Next Milestone |
-| **Phase 8** | **Fraud Detection API (FastAPI)** | ⚪ Pending | Phase 8 |
+| **Phase 6** | **Risk Engine & Decision Framework** | 🟢 **Completed** | Milestone 6 |
+| **Phase 7** | **Explainability & Reason Codes** | 🟢 **Completed** | Milestone 7 (Current) |
+| **Phase 8** | **Fraud Detection API (FastAPI)** | ⚪ Pending | Next Milestone |
 | **Phase 9** | **Database & Persistence (PostgreSQL)** | ⚪ Pending | Phase 9 |
 | **Phase 10** | **Real-Time Detection & Benchmarking** | ⚪ Pending | Phase 10 |
 | **Phase 11** | **Fraud Intelligence Dashboard** | ⚪ Pending | Phase 11 |
@@ -88,6 +88,36 @@
 
 ---
 
+## ✅ Phase 7 Deliverable Checklist (Explainability & Reason Codes)
+
+- [x] **Core Explainability Package (`ml/explainability/`)**:
+  - Implemented typed, immutable data contracts in `ml/explainability/schemas.py` (`AttributionDirection`, `ReasonSource`, `ReasonSeverity`, `FeatureAttribution`, `ReasonCodeDetail`, `WaterfallStep`, `TransactionExplanation`).
+  - Authored complete 55-feature explainability registry in `ml/explainability/config.py` defining display names, domain categorization, units, and plain-English risk/mitigating templates.
+- [x] **Native TreeSHAP Engine (`ml/explainability/explainer.py`)**:
+  - Leveraged frozen XGBoost compiled C++ TreeSHAP (`pred_contribs=True`) with zero external `shap` package dependencies, eliminating binary C-extension fragility and Windows OpenMP collisions.
+  - Dynamically extracts baseline expected margin ($\phi_0 \approx 0.243697$) and verifies Lundberg Additivity ($\sum \phi_i + \phi_0 = \text{output\_margin}$) with $\max \text{diff} < 7.2 \times 10^{-6}$.
+- [x] **Mathematically Complete Margin Waterfall**:
+  - Constructs verified waterfall steps accounting for 100% of log-odds margin: Base Value $\to$ Selected Top Features $\to$ Residual ("Other feature contributions") $\to$ Final Margin display marker.
+- [x] **Reason Code Synthesizer (`ml/explainability/reason_codes.py`)**:
+  - Combines deterministic Phase 6 business rule triggers (`source="RULE"`) and top local TreeSHAP feature attributions (`source="MODEL"`).
+  - Enforces strict precedence: Overriding Rules $\to$ Actionable Rules $\to$ Model Risk Drivers $\to$ Passive Monitoring Rules.
+- [x] **Decision Provenance & Override Transparency**:
+  - Distinctly exposes `model_score`, `baseline_action`, `rule_action`, `action`, and `is_overridden`.
+  - Explicitly states when a review queue escalation was initiated by a business rule rather than implying model prediction.
+- [x] **Raw-Value & Categorical Integrity**:
+  - Preserves raw string categorical values (`merchant_category`, `job_category`) and unencoded numeric inputs; internal ordinal codes are never presented as business-meaningful values.
+- [x] **Evaluator Integration (`RiskEvaluator`)**:
+  - Added `explain_transaction()` and `evaluate_with_explanation()` preserving 100% backward compatibility for existing methods.
+- [x] **Performance Benchmarking**:
+  - Measured local single explanation latency ($\text{mean} = 25.18\text{ ms}$, $\text{median} = 24.29\text{ ms}$) and batch TreeSHAP throughput ($602.77\ \mu\text{s/row}$, $\approx 1,659\text{ explanations/sec}$).
+- [x] **Comprehensive Testing & Artifact Invariance**:
+  - Added 26 dedicated Phase 7 unit/integration tests; achieved 358 / 358 passing tests across the entire ML suite.
+  - Verified SHA-256 artifact immutability across all frozen models, preprocessors, metadata, and Parquet partitions.
+- [x] **Authoritative Documentation**:
+  - Authored comprehensive Phase 7 report in `docs/explainability_report.md`.
+
+---
+
 ## 🏛 Architectural Decision Records (ADRs)
 
 ### ADR-001: Modular Monorepo Scaffolding
@@ -121,22 +151,28 @@
 - **Status**: Accepted (Phase 5).
 
 ### ADR-011: Hybrid Risk Decisioning & Standard Rule Catalog Governance
-- **Context**: Business domain rules and compliance constraints must operate alongside ML predictions without overriding high-confidence ML blocks or creating catastrophic false-positive spikes.
-- **Decision**: Structure the standard rule catalog as a risk-intelligence and manual-review escalation layer (containing `REVIEW` and `MONITOR` rules, with zero automated hard-block rules). Enforce strict precedence where ML `BLOCK` outcomes are immutable and cannot be downgraded by lower-tier rules. Relegate geographic speed anomalies to `MONITOR` status to avoid false-positive disruptions on e-commerce transactions.
 - **Status**: Accepted (Phase 6).
+
+### ADR-012: Native TreeSHAP Explanations & Margin Waterfall Transparency
+- **Context**: Fraud risk analysts and case investigators require clear, mathematically sound, and auditable reasons explaining why a transaction was approved, reviewed, or blocked, without mischaracterizing policy overrides as model predictions or adding fragile external runtime dependencies.
+- **Decision**: Implement local explainability using XGBoost's native compiled TreeSHAP engine (`pred_contribs=True`), bypassing third-party C-extension libraries. Represent feature attributions in additive log-odds margin space with a mathematically complete waterfall (including base margin, top drivers, and a residual step). Clearly separate deterministic business rule reasons (`source="RULE"`) from statistical model drivers (`source="MODEL"`), and preserve unencoded categorical values for human readability.
+- **Status**: Accepted (Phase 7).
 
 ---
 
 ## ⚠️ Known Constraints & Risk Register
 
-1. **Review Queue Operational Sizing**: Hybrid rule overrides add $\approx 1,039$ transactions to the OOT manual review queue ($+168.4\%$ volume increase). Real-world deployments must ensure sufficient analyst capacity to maintain SLA targets.
-2. **Static Fixed-Cost Assumptions**: Current benchmark evaluations apply fixed unit costs ($C_{\text{FP}}=\$15, C_{\text{FN}}=\$200, C_{\text{REV}}=\$5$). Dynamic amount-weighted risk scoring is recommended for future financial optimization.
+1. **Analyst Review Scope**: Explanation payloads and reason codes provide interpretability and triage assistance for human investigators; they do not constitute statutory legal compliance certifications.
+2. **Margin vs Probability Additivity**: TreeSHAP attributions are additive in raw log-odds margin space. Due to the non-linearity of the logistic sigmoid link function, individual feature contributions cannot be linearly summed in probability space.
+3. **Review Queue Operational Sizing**: Hybrid rule overrides add manual review volume (+168.4% in OOT holdout). Real-world deployments must size analyst capacity accordingly.
+4. **Static Cost Assumptions**: Current threshold benchmarks assume fixed unit costs ($C_{\text{FP}}=\$15, C_{\text{FN}}=\$200, C_{\text{REV}}=\$5$). Dynamic amount-weighted scoring is recommended for future financial optimization.
 
 ---
 
-## ⏭ Next Step: Preparation for Phase 7 (Explainability & Reason Codes)
+## ⏭ Next Step: Preparation for Phase 8 (Fraud Detection API — FastAPI)
 
-When approved to start Phase 7:
-- Integrate TreeSHAP feature attributions on top of the XGBoost champion model.
-- Map local SHAP attribution values into standardized human-readable reason codes for all non-approved transactions.
-- Implement waterfall visualization exports for downstream analyst case management.
+When approved to start Phase 8:
+- Implement high-performance, asynchronous REST API using **FastAPI** and **Uvicorn**.
+- Define strictly validated Pydantic v2 schemas for single-transaction and batch fraud scoring requests.
+- Integrate `RiskEvaluator`, `RuleEngine`, and `TreeSHAPExplainer` into dependency-injected endpoint handlers (`/api/v1/score`, `/api/v1/explain`, `/api/v1/health`).
+- Implement API request logging, authentication middleware, and structured error handling.

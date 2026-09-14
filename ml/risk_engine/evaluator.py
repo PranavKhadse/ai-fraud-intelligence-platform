@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Dict, Any, List, Optional, Union, Mapping
+from typing import Dict, Any, List, Optional, Union, Mapping, Tuple
 import numpy as np
 import pandas as pd
 import joblib
@@ -181,6 +181,18 @@ class RiskEvaluator:
                 f"rule_engine must be an instance of RuleEngine or None, got {type(rule_engine).__name__}"
             )
         self._rule_engine = rule_engine
+        self._explainer = None
+
+    @property
+    def explainer(self) -> Any:
+        """Return the TreeSHAPExplainer instance initialized with current model and preprocessor."""
+        if self._explainer is None:
+            from ml.explainability.explainer import TreeSHAPExplainer
+            self._explainer = TreeSHAPExplainer(
+                model=self.model,
+                preprocessor=self.preprocessor,
+            )
+        return self._explainer
 
     @property
     def config(self) -> DecisionPolicyConfig:
@@ -429,3 +441,148 @@ class RiskEvaluator:
             overridden_count=overridden_count,
             rule_trigger_counts=rule_trigger_counts,
         )
+
+    def explain_transaction(
+        self,
+        df_or_series: Union[pd.DataFrame, pd.Series, Dict[str, Any]],
+        top_k: int = 5,
+        top_mitigating: int = 3,
+        max_reasons: int = 5,
+    ) -> Any:
+        """
+        Compute a comprehensive, audit-ready explanation for a single transaction.
+
+        Combines:
+        - Exact TreeSHAP feature attributions and margin waterfall from the XGBoost champion model.
+        - Deterministic Phase 6 rule matching and override provenance from RuleEngine.
+        - Plain-English reason codes structured for investigator triage and case review.
+
+        Args:
+            df_or_series: 1-row DataFrame, Series, or Dictionary containing the transaction features.
+            top_k: Maximum number of positive (risk-increasing) feature factors.
+            top_mitigating: Maximum number of negative (mitigating) feature factors.
+            max_reasons: Maximum number of combined reason codes.
+
+        Returns:
+            TransactionExplanation: Complete immutable explanation payload.
+        """
+        from ml.explainability.reason_codes import ReasonCodeGenerator
+        from ml.explainability.schemas import TransactionExplanation
+
+        if isinstance(df_or_series, dict):
+            raw_dict = dict(df_or_series)
+            df = pd.DataFrame([df_or_series])
+        elif isinstance(df_or_series, pd.Series):
+            raw_dict = df_or_series.to_dict()
+            df = pd.DataFrame([raw_dict])
+        elif isinstance(df_or_series, pd.DataFrame):
+            if len(df_or_series) != 1:
+                raise ValueError(
+                    f"explain_transaction expects a 1-row DataFrame, got {len(df_or_series)} rows. "
+                    "Use evaluate_dataframe for batch evaluation."
+                )
+            df = df_or_series
+            raw_dict = df.iloc[0].to_dict()
+        else:
+            raise TypeError(
+                f"df_or_series must be a 1-row DataFrame, Series, or dict, got {type(df_or_series).__name__}"
+            )
+
+        # 1. Evaluate decision result via existing evaluate_transaction pipeline
+        decision = self.evaluate_transaction(df)
+
+        # 2. Extract rule matches if RuleEngine is present
+        rule_matches: Tuple[Any, ...] = ()
+        if self._rule_engine is not None:
+            rule_matches = self._rule_engine.evaluate(raw_dict)
+
+        # 3. Extract preprocessed features for exact alignment
+        X = self._extract_and_validate_features(df)
+        X_trans = self.preprocessor.transform(X)
+
+        # 4. Execute TreeSHAP explanation
+        (
+            model_score,
+            output_margin,
+            base_value,
+            top_risk,
+            top_mitigating_factors,
+            waterfall,
+        ) = self.explainer.explain_features(
+            raw_features=raw_dict,
+            preprocessed_row=X_trans,
+            top_k=top_k,
+            top_mitigating=top_mitigating,
+        )
+
+        # 5. Synthesize combined reason codes
+        reason_codes = ReasonCodeGenerator.generate_reason_codes(
+            top_risk_factors=top_risk,
+            rule_matches=rule_matches,
+            is_overridden=decision.is_overridden,
+            rule_action=decision.rule_action,
+            max_reasons=max_reasons,
+        )
+
+        # Determine baseline model-only action before rule overrides
+        baseline_res = self.policy_engine.evaluate(decision.model_score)
+        baseline_action = baseline_res.action
+
+        return TransactionExplanation(
+            model_score=decision.model_score,
+            output_margin=output_margin,
+            base_value=base_value,
+            risk_score=decision.risk_score,
+            risk_tier=decision.risk_tier,
+            action=decision.action,
+            baseline_action=baseline_action,
+            policy_mode=decision.policy_mode,
+            top_risk_factors=top_risk,
+            top_mitigating_factors=top_mitigating_factors,
+            reason_codes=reason_codes,
+            waterfall=waterfall,
+            is_overridden=decision.is_overridden,
+            rule_action=decision.rule_action,
+            rules_triggered=decision.rules_triggered,
+            rule_matches=rule_matches,
+            model_version=self.model_version,
+        )
+
+    def evaluate_with_explanation(
+        self,
+        df_or_series: Union[pd.DataFrame, pd.Series, Dict[str, Any]],
+        top_k: int = 5,
+        top_mitigating: int = 3,
+        max_reasons: int = 5,
+    ) -> Tuple[DecisionResult, Any]:
+        """
+        Evaluate a single transaction and simultaneously generate its explanation.
+
+        Args:
+            df_or_series: 1-row DataFrame, Series, or Dictionary.
+            top_k: Top risk factors count.
+            top_mitigating: Top mitigating factors count.
+            max_reasons: Max reason codes count.
+
+        Returns:
+            Tuple[DecisionResult, TransactionExplanation]: Decision result and explanation payload.
+        """
+        if isinstance(df_or_series, dict):
+            df = pd.DataFrame([df_or_series])
+        elif isinstance(df_or_series, pd.Series):
+            df = pd.DataFrame([df_or_series.to_dict()])
+        elif isinstance(df_or_series, pd.DataFrame):
+            df = df_or_series
+        else:
+            raise TypeError(
+                f"df_or_series must be a 1-row DataFrame, Series, or dict, got {type(df_or_series).__name__}"
+            )
+
+        decision = self.evaluate_transaction(df)
+        explanation = self.explain_transaction(
+            df_or_series=df,
+            top_k=top_k,
+            top_mitigating=top_mitigating,
+            max_reasons=max_reasons,
+        )
+        return decision, explanation

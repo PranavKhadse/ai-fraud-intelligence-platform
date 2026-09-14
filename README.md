@@ -26,11 +26,25 @@ This platform bridges these operational gaps with an integrated, production-styl
   - `🟢 APPROVE` (Low Risk: Score < 35)
   - `🟡 REVIEW` (Medium Risk: 35 ≤ Score < 75)
   - `🔴 BLOCK` (High Risk: Score ≥ 75)
-- **Explainable AI & Reason Codes**: TreeSHAP feature attributions mapped into human-readable reason codes (e.g., `"HIGH_VELOCITY_1H"`, `"UNUSUAL_GEO_DISTANCE"`, `"TRANSACTION_AMOUNT_SPIKE"`).
+- **Explainable AI & Reason Codes**: Native TreeSHAP feature attributions mapped into human-readable reason codes and complete margin waterfalls with strict rule/model provenance.
 - **Production REST API**: High-throughput FastAPI service with strictly typed Pydantic v2 schemas and structured logging.
 - **Persistent Data Store**: PostgreSQL database modeling transactions, risk evaluation audits, rules, and human-in-the-loop analyst cases.
 - **Analyst Case Management Dashboard**: Modern React + TypeScript UI for real-time risk alerts, fraud investigations, and manual dispositioning.
 - **Continuous MLOps & Drift Intelligence**: Automated tracking of data/concept drift, feature distribution shift, model retraining pipelines, and champion/challenger validation.
+
+---
+
+## 🔍 Explainability, Reason Codes & Decision Transparency
+
+The platform integrates a local explainability framework designed to support analyst review and diagnostic interpretability, powered by native gradient-boosted TreeSHAP and deterministic business rule telemetry:
+
+- **Local TreeSHAP Explanations**: Extracts exact feature attributions ($\phi_1 \dots \phi_{55}$) directly using XGBoost's native compiled C++ TreeSHAP engine without external C-extension dependencies.
+- **Risk & Mitigating Factor Decomposition**: Quantifies risk-increasing factors ($\phi > 0$) pushing scores toward fraud, and mitigating factors ($\phi < 0$) reducing transaction risk.
+- **Rule & Model Reason Codes**: Standardized, human-readable reason codes with clear source provenance (`source="RULE"` for deterministic policy overrides vs. `source="MODEL"` for statistical tree drivers).
+- **Decision Transparency & Override Tracking**: Clearly exposes and distinguishes `model_score`, `baseline_action`, `rule_action`, `action`, and `is_overridden` (e.g., policy escalations to `REVIEW` are faithfully reported as rule overrides, not model predictions).
+- **Residual Margin Waterfall Reconstruction**: Mathematically complete margin-space waterfall ($\text{Base Margin} \to \text{Top Features} \to \text{Residual} \to \text{Final Margin}$) reconstructing output margin within floating-point tolerance ($\approx 7.2 \times 10^{-6}$).
+- **Raw-Value & Categorical Integrity**: Preserves human-readable raw categorical labels (e.g., `'shopping_net'`) and unencoded numeric inputs; internal ordinal encoding codes are never surfaced as business values.
+- **Comprehensive Test Coverage**: Verified across 26 dedicated explainability tests, 250 risk engine tests, and 358 complete ML suite tests (100% pass rate).
 
 ---
 
@@ -39,7 +53,7 @@ This platform bridges these operational gaps with an integrated, production-styl
 | Layer | Technologies |
 | :--- | :--- |
 | **Backend API** | Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy, Uvicorn |
-| **Machine Learning** | NumPy, pandas, scikit-learn, XGBoost, LightGBM, SHAP |
+| **Machine Learning** | NumPy, pandas, scikit-learn, XGBoost, LightGBM, Native TreeSHAP |
 | **Database & Storage** | PostgreSQL |
 | **Frontend Dashboard** | React, TypeScript, Modern CSS / Tailwind (to be selected in Phase 11) |
 | **Testing & Quality** | pytest, pytest-cov, httpx |
@@ -104,7 +118,7 @@ This platform bridges these operational gaps with an integrated, production-styl
 | **Phase 4** | **Baseline & Advanced ML Models** | 🟢 **Completed** | XGBoost champion ($0.9619$ PR-AUC), LightGBM, Random Forest, Logistic Regression with process isolation. |
 | **Phase 5** | **Imbalance Handling & Cost Optimization** | 🟢 **Completed** | Cost matrix optimization ($\tau^*=0.78$), $31.8\%$ OOT cost reduction, sensitivity curves, leakage governance. |
 | **Phase 6** | **Risk Engine & Decision Framework** | 🟢 **Completed** | 0–100 risk scoring, tri-tier policy, deterministic rule engine, 6-rule standard catalog, empirical benchmark. |
-| **Phase 7** | **Explainability & Reason Codes** | ⚪ *Upcoming* | TreeSHAP feature attributions, local explanation extraction, human-readable reason codes. |
+| **Phase 7** | **Explainability & Reason Codes** | 🟢 **Completed** | Native TreeSHAP feature attributions, margin waterfall reconstruction, rule & model reason codes, decision override transparency. |
 | **Phase 8** | **Fraud Detection API (FastAPI)** | ⚪ *Upcoming* | Production REST API endpoints (`/evaluate`, `/score`, `/health`), Pydantic validation schemas. |
 | **Phase 9** | **Database & Persistence (PostgreSQL)** | ⚪ *Upcoming* | PostgreSQL schema modeling, migrations, transaction & audit logging, case records. |
 | **Phase 10** | **Real-Time Detection & Benchmarking** | ⚪ *Upcoming* | End-to-end transaction scoring pipeline, latency profiling & throughput benchmarking. |
@@ -182,4 +196,4 @@ ai-fraud-intelligence/
    ```
 
 3. **Follow the Phased Implementation**:
-   Refer to [PROJECT_STATUS.md](file:///d:/Users/Pranav%20Khadse/Downloads/VIT/Coding/AI-Powered%20Fraud%20Detection%20%26%20Risk%20Intelligence%20Platform/PROJECT_STATUS.md) for the active milestone and [PROJECT_SPEC.md](file:///d:/Users/Pranav%20Khadse/Downloads/VIT/Coding/AI-Powered%20Fraud%20Detection%20%26%20Risk%20Intelligence%20Platform/PROJECT_SPEC.md) for technical requirements.
+   Refer to [PROJECT_STATUS.md](PROJECT_STATUS.md) for the active milestone and [PROJECT_SPEC.md](PROJECT_SPEC.md) for technical requirements.
