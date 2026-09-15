@@ -41,11 +41,16 @@ class Settings(BaseSettings):
     PREPROCESSOR_PATH: Path = Path("ml/models/artifacts/champion_preprocessor.joblib")
     METADATA_PATH: Optional[Path] = Path("ml/models/artifacts/model_metadata.json")
 
-    # CORS Configuration
+    # CORS and Security Configuration
     CORS_ORIGINS: List[str] = Field(
         default=["*"],
         description="Allowed CORS origin patterns for frontend web dashboard and microservices.",
     )
+    TRUST_PROXY_HEADERS: bool = Field(
+        default=False,
+        description="Whether to trust X-Forwarded-For and X-Real-IP reverse proxy headers for client IP extraction.",
+    )
+
 
     # Risk Engine Configuration Defaults
     DEFAULT_POLICY_MODE: str = "TRI_TIER"

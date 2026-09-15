@@ -26,14 +26,15 @@ from backend.app.services.unit_of_work import FraudPersistenceUnitOfWork
 
 def get_test_database_url() -> str:
     """
-    Resolve the PostgreSQL test database URL.
+    Resolve and validate the PostgreSQL test database URL with strict anti-corruption safeguards.
 
     Priority:
     1. TEST_DATABASE_URL environment variable
     2. Default local test database URL: 'postgresql+asyncpg://postgres:postgres@localhost:5432/fraud_intelligence_test_db'
 
-    Note: DATABASE_URL is intentionally NOT used as a fallback to prevent accidental
-    truncation of the development or production database.
+    Safety Guards:
+    - Rejects any URL targeting the primary development or production database ('fraud_intelligence_db').
+    - Requires the database name to explicitly indicate a test environment (e.g. contain 'test').
     """
     raw_url = (
         os.environ.get("TEST_DATABASE_URL")
@@ -44,7 +45,17 @@ def get_test_database_url() -> str:
         raw_url = "postgresql+asyncpg://" + raw_url[len("postgres://"):]
     elif raw_url.startswith("postgresql://"):
         raw_url = "postgresql+asyncpg://" + raw_url[len("postgresql://"):]
+
+    # Strict Safety Guard: Never allow automated tests/truncation against non-test databases
+    db_name = raw_url.rsplit("/", 1)[-1].split("?")[0].lower()
+    if db_name in ("fraud_intelligence_db", "production", "prod", "main") or "test" not in db_name:
+        raise RuntimeError(
+            f"CRITICAL SAFETY ERROR: Test database URL '{raw_url}' targets a non-test database ('{db_name}'). "
+            "Automated test execution with table truncation is strictly prohibited against non-test databases."
+        )
+
     return raw_url
+
 
 
 async def _check_postgres_connection(url: str) -> bool:
@@ -100,6 +111,21 @@ async def db_session(pg_engine: Optional[AsyncEngine]) -> AsyncGenerator[AsyncSe
             "or ensure PostgreSQL is running to execute integration tests."
         )
 
+    # Ensure clean state before test execution
+    async with pg_engine.begin() as conn:
+        await conn.execute(
+            text(
+                "TRUNCATE TABLE "
+                "evaluation_feature_attributions, "
+                "evaluation_reason_codes, "
+                "evaluation_rule_matches, "
+                "audit_logs, "
+                "risk_evaluations, "
+                "transactions "
+                "CASCADE"
+            )
+        )
+
     session_factory = async_sessionmaker(
         bind=pg_engine,
         class_=AsyncSession,
@@ -124,6 +150,7 @@ async def db_session(pg_engine: Optional[AsyncEngine]) -> AsyncGenerator[AsyncSe
                 "CASCADE"
             )
         )
+
 
 
 @pytest_asyncio.fixture(scope="function")

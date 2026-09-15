@@ -13,12 +13,19 @@ from backend.app.services.persistence_service import (
     AuditLogData,
     FeatureAttributionData,
     FraudPersistenceService,
+    get_persistence_service,
     PersistRiskEvaluationCommand,
     PersistedRiskEvaluationResult,
     ReasonCodeData,
     RiskEvaluationData,
     RuleMatchData,
     TransactionData,
+)
+from backend.app.services.risk_persistence_mapper import (
+    RiskEvaluationContext,
+    RiskPersistenceMapper,
+    map_explanation_to_command,
+    map_prediction_to_command,
 )
 from backend.app.services.risk_service import (
     RiskService,
@@ -37,6 +44,7 @@ __all__ = [
     "FraudPersistenceUnitOfWork",
     "UnitOfWork",
     "FraudPersistenceService",
+    "get_persistence_service",
     "PersistRiskEvaluationCommand",
     "PersistedRiskEvaluationResult",
     "TransactionData",
@@ -45,4 +53,8 @@ __all__ = [
     "ReasonCodeData",
     "FeatureAttributionData",
     "AuditLogData",
+    "RiskPersistenceMapper",
+    "RiskEvaluationContext",
+    "map_prediction_to_command",
+    "map_explanation_to_command",
 ]

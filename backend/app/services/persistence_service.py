@@ -12,6 +12,9 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Union
 import uuid
 
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from backend.app.db.models.audit_log import AuditLog
 from backend.app.db.models.enums import (
     AttributionDirection,
@@ -30,8 +33,10 @@ from backend.app.db.models.reason_code import EvaluationReasonCode
 from backend.app.db.models.risk_evaluation import RiskEvaluation
 from backend.app.db.models.rule_match import EvaluationRuleMatch
 from backend.app.db.models.transaction import Transaction
+from backend.app.db.session import get_db_session
 from backend.app.repositories.exceptions import PersistenceConflictError
 from backend.app.services.unit_of_work import FraudPersistenceUnitOfWork
+
 
 
 # ==============================================================================
@@ -445,8 +450,20 @@ class FraudPersistenceService:
             raise
 
 
+def get_persistence_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> FraudPersistenceService:
+    """
+    FastAPI dependency provider constructing a request-scoped FraudPersistenceService
+    backed by an active AsyncSession Unit of Work.
+    """
+    uow = FraudPersistenceUnitOfWork(session)
+    return FraudPersistenceService(uow)
+
+
 __all__ = [
     "FraudPersistenceService",
+    "get_persistence_service",
     "PersistRiskEvaluationCommand",
     "PersistedRiskEvaluationResult",
     "TransactionData",

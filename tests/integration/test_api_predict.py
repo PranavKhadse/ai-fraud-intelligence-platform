@@ -27,15 +27,23 @@ import pytest
 import pandas as pd
 from fastapi.testclient import TestClient
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.app.db.session import get_db_session
 from backend.app.main import app
 from ml.models.config import VAL_FEATURES_PATH
 
 
-@pytest.fixture(scope="module")
-def client() -> TestClient:
-    """Provide a TestClient instance for API integration tests."""
+@pytest.fixture(scope="function")
+def client(db_session: AsyncSession) -> TestClient:
+    """Provide a TestClient instance bound to the active test database session."""
+    async def override_get_db_session():
+        yield db_session
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
     with TestClient(app) as test_client:
         yield test_client
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture(scope="module")
@@ -82,8 +90,14 @@ def test_predict_legitimate_transaction(client: TestClient, legitimate_row: Dict
 
 def test_predict_versioned_parity(client: TestClient, legitimate_row: Dict[str, Any]):
     """Verify that POST /api/v1/predict behaves identically to POST /predict."""
-    resp_root = client.post("/predict", json=legitimate_row)
-    resp_v1 = client.post("/api/v1/predict", json=legitimate_row)
+    row_root = legitimate_row.copy()
+    row_root["transaction_id"] = "tx_parity_root"
+
+    row_v1 = legitimate_row.copy()
+    row_v1["transaction_id"] = "tx_parity_v1"
+
+    resp_root = client.post("/predict", json=row_root)
+    resp_v1 = client.post("/api/v1/predict", json=row_v1)
 
     assert resp_root.status_code == 200
     assert resp_v1.status_code == 200
@@ -95,6 +109,7 @@ def test_predict_versioned_parity(client: TestClient, legitimate_row: Dict[str, 
     assert data_root["risk_score"] == data_v1["risk_score"]
     assert data_root["model_score"] == data_v1["model_score"]
     assert data_root["risk_tier"] == data_v1["risk_tier"]
+
 
 
 def test_predict_fraud_transaction(client: TestClient, fraud_row: Dict[str, Any]):
