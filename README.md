@@ -119,7 +119,7 @@ The platform integrates a local explainability framework designed to support ana
 | **Phase 5** | **Imbalance Handling & Cost Optimization** | 🟢 **Completed** | Cost matrix optimization ($\tau^*=0.78$), $31.8\%$ OOT cost reduction, sensitivity curves, leakage governance. |
 | **Phase 6** | **Risk Engine & Decision Framework** | 🟢 **Completed** | 0–100 risk scoring, tri-tier policy, deterministic rule engine, 6-rule standard catalog, empirical benchmark. |
 | **Phase 7** | **Explainability & Reason Codes** | 🟢 **Completed** | Native TreeSHAP feature attributions, margin waterfall reconstruction, rule & model reason codes, decision override transparency. |
-| **Phase 8** | **Fraud Detection API (FastAPI)** | ⚪ *Upcoming* | Production REST API endpoints (`/evaluate`, `/score`, `/health`), Pydantic validation schemas. |
+| **Phase 8** | **Fraud Detection API (FastAPI)** | 🟢 **Completed** | Production REST API (`/health`, `/predict`, `/api/v1/health`, `/api/v1/predict`), Pydantic v2 schemas, lifespan model pre-warming. |
 | **Phase 9** | **Database & Persistence (PostgreSQL)** | ⚪ *Upcoming* | PostgreSQL schema modeling, migrations, transaction & audit logging, case records. |
 | **Phase 10** | **Real-Time Detection & Benchmarking** | ⚪ *Upcoming* | End-to-end transaction scoring pipeline, latency profiling & throughput benchmarking. |
 | **Phase 11** | **Fraud Intelligence Dashboard** | ⚪ *Upcoming* | React + TypeScript web app, real-time alerts feed, risk distribution charts, audit views. |
@@ -145,12 +145,13 @@ ai-fraud-intelligence/
 ├── PROJECT_STATUS.md         # Active progress tracker and architectural decisions
 ├── backend/                  # FastAPI microservices
 │   └── app/
-│       ├── api/              # API router blueprints
-│       ├── core/             # Configuration & security
-│       ├── db/               # Database engine & session
-│       ├── models/           # SQLAlchemy ORM models
-│       ├── schemas/          # Pydantic schemas
-│       └── services/         # Risk engine & business logic
+│       ├── api/              # API router blueprints (v1 endpoints: /health, /predict)
+│       ├── core/             # Configuration & settings
+│       ├── db/               # Database engine & session (Phase 9)
+│       ├── models/           # SQLAlchemy ORM models (Phase 9)
+│       ├── schemas/          # Pydantic v2 request & response schemas
+│       ├── services/         # Risk engine & business logic service layer
+│       └── main.py           # Application entrypoint & lifespan management
 ├── ml/                       # Machine learning pipelines
 │   ├── data/                 # Ingestion & data splitters
 │   ├── features/             # Feature engineering pipelines
@@ -168,9 +169,9 @@ ai-fraud-intelligence/
 │   ├── migrations/
 │   └── seeds/
 ├── tests/                    # Test suites across unit, integration, and ML
-│   ├── unit/
-│   ├── integration/
-│   └── ml/
+│   ├── unit/                 # Schema & health endpoint tests
+│   ├── integration/          # API prediction & rule override integration tests
+│   └── ml/                   # 358 comprehensive ML & risk engine tests
 ├── config/                   # Centralized configuration files
 ├── scripts/                  # Automation and utility scripts
 ├── docs/                     # Specifications, runbooks, and diagrams
@@ -179,21 +180,124 @@ ai-fraud-intelligence/
 
 ---
 
-## ⚙️ Future Setup Instructions
+## ⚙️ Local Development & Quick Start
 
-> [!NOTE]
-> Phase 0 is foundational. Heavy dependencies and application runtime code will be installed incrementally in subsequent phases.
+### 1. Configure Environment
+```bash
+cp .env.example .env
+```
 
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd "AI-Powered Fraud Detection & Risk Intelligence Platform"
-   ```
+### 2. Start the FastAPI Service Locally
+Run the high-performance Uvicorn server:
+```bash
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+Once started, explore the interactive OpenAPI Swagger UI at:
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
-2. **Configure Environment:**
-   ```bash
-   cp .env.example .env
-   ```
+---
 
-3. **Follow the Phased Implementation**:
-   Refer to [PROJECT_STATUS.md](PROJECT_STATUS.md) for the active milestone and [PROJECT_SPEC.md](PROJECT_SPEC.md) for technical requirements.
+## 📡 API Endpoints & Usage Examples
+
+### 1. Health & Telemetry Check (`GET /health`)
+```bash
+curl -X GET http://localhost:8000/health
+```
+**Sample Response:**
+```json
+{
+  "status": "healthy",
+  "app_name": "AI-Powered Fraud Detection & Risk Intelligence Platform API",
+  "version": "1.0.0",
+  "model_loaded": true,
+  "model_version": "1.0.0",
+  "rules_loaded_count": 6,
+  "timestamp": "2026-09-15T04:20:00.000000+00:00"
+}
+```
+
+### 2. Fraud Prediction & Explainability (`POST /predict`)
+Evaluates a single financial transaction against the 55-feature behavioral contract, computing continuous model scores, normalized 0–100 risk scores, tri-tier decision actions, triggered business rules, and local TreeSHAP reason codes:
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 49.99,
+    "cardholder_lat": 40.7128,
+    "cardholder_long": -74.0060,
+    "merchant_lat": 40.7306,
+    "merchant_long": -73.9352,
+    "city_pop": 8336817.0,
+    "merchant_category": "shopping_net",
+    "job_category": "engineer",
+    "transaction_hour": 14,
+    "day_of_week": 2,
+    "day_of_month": 15,
+    "month": 9,
+    "week_of_year": 38,
+    "is_weekend": 0,
+    "is_night": 0,
+    "hour_sin": 0.5,
+    "hour_cos": -0.866,
+    "day_of_week_sin": 0.9749,
+    "day_of_week_cos": -0.2225,
+    "txn_count_1h": 1.0,
+    "txn_count_6h": 2.0,
+    "txn_count_24h": 3.0,
+    "txn_count_7d": 10.0,
+    "txn_count_30d": 35.0,
+    "time_since_prev_txn_seconds": 3600.0,
+    "is_first_account_txn": 0,
+    "amt_sum_1h": 49.99,
+    "amt_sum_24h": 120.50,
+    "amt_sum_7d": 450.00,
+    "amt_sum_30d": 1800.00,
+    "amt_mean_24h": 40.17,
+    "amt_mean_7d": 45.00,
+    "amt_max_24h": 60.00,
+    "amt_median_30d": 38.50,
+    "historical_amount_mean": 42.00,
+    "historical_amount_std": 15.50,
+    "historical_amount_median": 38.50,
+    "amount_zscore": 0.515,
+    "amount_ratio_to_historical_mean": 1.19,
+    "account_txn_count_before": 35.0,
+    "account_total_spend_before": 1800.00,
+    "account_avg_amount_before": 51.43,
+    "account_max_amount_before": 150.00,
+    "account_unique_merchant_count_before": 20.0,
+    "account_unique_category_count_before": 8.0,
+    "account_merchant_txn_count_before": 3.0,
+    "account_category_txn_count_before": 12.0,
+    "account_merchant_spend_before": 150.00,
+    "account_category_spend_before": 520.00,
+    "merchant_txn_count_before": 2500.0,
+    "category_txn_count_before": 15000.0,
+    "cardholder_merchant_distance_km": 6.35,
+    "distance_from_prev_merchant_km": 2.10,
+    "implied_travel_speed_kmh": 2.10,
+    "is_impossible_travel_speed": 0
+  }'
+```
+
+---
+
+## 🧪 Running Automated Tests
+
+Run the complete test suite across ML models, risk engine, and FastAPI REST endpoints:
+```bash
+python -m pytest tests/
+```
+
+Run specific test modules:
+```bash
+# Unit tests (schemas & health endpoint)
+python -m pytest tests/unit/
+
+# API Integration tests (/predict, rule overrides, error handling)
+python -m pytest tests/integration/
+
+# ML & Risk Engine test suite
+python -m pytest tests/ml/
+```

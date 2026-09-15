@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md — Project Tracking & Status Dashboard
 
 > **Platform:** AI-Powered Fraud Detection & Risk Intelligence Platform
-> **Last Updated:** Current Date (Phase 7 Implementation Completed)
-> **Current Active Phase:** **Phase 7 — Explainability & Reason Codes (Completed)**
+> **Last Updated:** Current Date (Phase 8 Implementation Completed)
+> **Current Active Phase:** **Phase 8 — Fraud Detection API (FastAPI) (Completed)**
 
 ---
 
@@ -17,9 +17,9 @@
 | **Phase 4** | **Baseline & Advanced ML Models** | 🟢 **Completed** | Milestone 4 |
 | **Phase 5** | **Imbalance Handling & Cost Optimization** | 🟢 **Completed** | Milestone 5 |
 | **Phase 6** | **Risk Engine & Decision Framework** | 🟢 **Completed** | Milestone 6 |
-| **Phase 7** | **Explainability & Reason Codes** | 🟢 **Completed** | Milestone 7 (Current) |
-| **Phase 8** | **Fraud Detection API (FastAPI)** | ⚪ Pending | Next Milestone |
-| **Phase 9** | **Database & Persistence (PostgreSQL)** | ⚪ Pending | Phase 9 |
+| **Phase 7** | **Explainability & Reason Codes** | 🟢 **Completed** | Milestone 7 |
+| **Phase 8** | **Fraud Detection API (FastAPI)** | 🟢 **Completed** | Milestone 8 (Current) |
+| **Phase 9** | **Database & Persistence (PostgreSQL)** | ⚪ Pending | Next Milestone |
 | **Phase 10** | **Real-Time Detection & Benchmarking** | ⚪ Pending | Phase 10 |
 | **Phase 11** | **Fraud Intelligence Dashboard** | ⚪ Pending | Phase 11 |
 | **Phase 12** | **Human Review & Case Management** | ⚪ Pending | Phase 12 |
@@ -118,6 +118,29 @@
 
 ---
 
+## ✅ Phase 8 Deliverable Checklist (Fraud Detection API — FastAPI)
+
+- [x] **FastAPI Application & Core Configuration**:
+  - Implemented application entrypoint in `backend/app/main.py` with asynchronous lifespan manager for eager model loading and pre-warming.
+  - Configured `backend/app/core/config.py` with strongly typed environment settings, artifact paths, API prefix (`/api/v1`), and CORS origins.
+- [x] **Strict Pydantic v2 Schemas**:
+  - Defined `TransactionPredictRequest` in `backend/app/schemas/predict.py` validating all 55 canonical and engineered feature columns with physical/domain bounds and optional metadata tolerance (`extra="allow"`).
+  - Defined typed, standardized response models: `PredictionResponse`, `ReasonCodeResponse`, `RuleMatchResponse`, `FeatureAttributionResponse`, and `HealthResponse`.
+- [x] **Service Layer & RiskEvaluator Reuse**:
+  - Architected `RiskService` in `backend/app/services/risk_service.py` wrapping the frozen `RiskEvaluator` and standard 6-rule catalog (`get_standard_rule_catalog()`).
+  - Integrated dependency injection hook `get_risk_service` for high-throughput, thread-safe inference without model reloading.
+- [x] **Dual-Path REST Endpoints**:
+  - Implemented `GET /health` and `GET /api/v1/health` delivering real-time service telemetry, champion model version provenance (`1.0.0`), and rule counts.
+  - Implemented `POST /predict` and `POST /api/v1/predict` returning continuous score, 0–100 risk score, tri-tier decision (`APPROVE`/`REVIEW`/`BLOCK`), deterministic rule matches, and local TreeSHAP reason codes.
+- [x] **Comprehensive Test Suite**:
+  - Authored 21 dedicated API tests across `tests/unit/test_api_schemas.py`, `tests/unit/test_api_health.py`, and `tests/integration/test_api_predict.py`.
+  - Achieved **379 / 379 passing tests** (358 ML tests + 21 API tests) with 100% pass rate.
+  - Verified SHA-256 artifact immutability before and after API executions.
+- [x] **Interactive Documentation & Runbooks**:
+  - Updated `README.md` with local Uvicorn startup commands (`uvicorn backend.app.main:app --reload`), pytest commands, and curl examples.
+
+---
+
 ## 🏛 Architectural Decision Records (ADRs)
 
 ### ADR-001: Modular Monorepo Scaffolding
@@ -154,9 +177,12 @@
 - **Status**: Accepted (Phase 6).
 
 ### ADR-012: Native TreeSHAP Explanations & Margin Waterfall Transparency
-- **Context**: Fraud risk analysts and case investigators require clear, mathematically sound, and auditable reasons explaining why a transaction was approved, reviewed, or blocked, without mischaracterizing policy overrides as model predictions or adding fragile external runtime dependencies.
-- **Decision**: Implement local explainability using XGBoost's native compiled TreeSHAP engine (`pred_contribs=True`), bypassing third-party C-extension libraries. Represent feature attributions in additive log-odds margin space with a mathematically complete waterfall (including base margin, top drivers, and a residual step). Clearly separate deterministic business rule reasons (`source="RULE"`) from statistical model drivers (`source="MODEL"`), and preserve unencoded categorical values for human readability.
 - **Status**: Accepted (Phase 7).
+
+### ADR-013: FastAPI Microservice Architecture & Zero-Mutation Inference
+- **Context**: Upstream payment gateways and web dashboards require a low-overhead, strictly validated REST interface to evaluate transactions in real-time, retrieve explainable decision reason codes, and inspect rule telemetry without modifying frozen ML models or datasets.
+- **Decision**: Build the REST API using **FastAPI** and **Pydantic v2**, managing `RiskEvaluator` and `RuleEngine` lifecycles via dependency injection. Pre-warm model artifacts in the lifespan context to minimize runtime cold starts. Expose both root-level (`/health`, `/predict`) and versioned (`/api/v1/health`, `/api/v1/predict`) endpoints. Validate the exact 55-feature schema while preserving transaction metadata passthrough.
+- **Status**: Accepted (Phase 8).
 
 ---
 
@@ -169,10 +195,9 @@
 
 ---
 
-## ⏭ Next Step: Preparation for Phase 8 (Fraud Detection API — FastAPI)
+## ⏭ Next Step: Preparation for Phase 9 (Database & Persistence — PostgreSQL)
 
-When approved to start Phase 8:
-- Implement high-performance, asynchronous REST API using **FastAPI** and **Uvicorn**.
-- Define strictly validated Pydantic v2 schemas for single-transaction and batch fraud scoring requests.
-- Integrate `RiskEvaluator`, `RuleEngine`, and `TreeSHAPExplainer` into dependency-injected endpoint handlers (`/api/v1/score`, `/api/v1/explain`, `/api/v1/health`).
-- Implement API request logging, authentication middleware, and structured error handling.
+When approved to start Phase 9:
+- Design and implement relational PostgreSQL schemas with SQLAlchemy ORM and Alembic migrations.
+- Model `users`/`accounts`, `transactions`, `risk_evaluations`, `cases`, and immutable `audit_logs`.
+- Persist incoming transactions and risk evaluation results asynchronously via the FastAPI service layer.
