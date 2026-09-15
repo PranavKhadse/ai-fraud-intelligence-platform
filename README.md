@@ -120,7 +120,7 @@ The platform integrates a local explainability framework designed to support ana
 | **Phase 6** | **Risk Engine & Decision Framework** | 🟢 **Completed** | 0–100 risk scoring, tri-tier policy, deterministic rule engine, 6-rule standard catalog, empirical benchmark. |
 | **Phase 7** | **Explainability & Reason Codes** | 🟢 **Completed** | Native TreeSHAP feature attributions, margin waterfall reconstruction, rule & model reason codes, decision override transparency. |
 | **Phase 8** | **Fraud Detection API (FastAPI)** | 🟢 **Completed** | Production REST API (`/health`, `/predict`, `/api/v1/health`, `/api/v1/predict`), Pydantic v2 schemas, lifespan model pre-warming. |
-| **Phase 9** | **Database & Persistence (PostgreSQL)** | ⚪ *Upcoming* | PostgreSQL schema modeling, migrations, transaction & audit logging, case records. |
+| **Phase 9** | **Database & Persistence (PostgreSQL)** | 🟢 **Completed** | PostgreSQL schema modeling, Alembic migrations, Repositories, Unit of Work, inline API persistence, idempotency & duplicate-request protection. |
 | **Phase 10** | **Real-Time Detection & Benchmarking** | ⚪ *Upcoming* | End-to-end transaction scoring pipeline, latency profiling & throughput benchmarking. |
 | **Phase 11** | **Fraud Intelligence Dashboard** | ⚪ *Upcoming* | React + TypeScript web app, real-time alerts feed, risk distribution charts, audit views. |
 | **Phase 12** | **Human Review & Case Management** | ⚪ *Upcoming* | Analyst review queue, manual confirmation/dismissal workflow, feedback capture. |

@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md — Project Tracking & Status Dashboard
 
 > **Platform:** AI-Powered Fraud Detection & Risk Intelligence Platform
-> **Last Updated:** Current Date (Phase 8 Implementation Completed)
-> **Current Active Phase:** **Phase 8 — Fraud Detection API (FastAPI) (Completed)**
+> **Last Updated:** Current Date (Phase 9 Implementation Completed)
+> **Current Active Phase:** **Phase 9 — Database & Persistence (PostgreSQL) (Completed)**
 
 ---
 
@@ -18,8 +18,8 @@
 | **Phase 5** | **Imbalance Handling & Cost Optimization** | 🟢 **Completed** | Milestone 5 |
 | **Phase 6** | **Risk Engine & Decision Framework** | 🟢 **Completed** | Milestone 6 |
 | **Phase 7** | **Explainability & Reason Codes** | 🟢 **Completed** | Milestone 7 |
-| **Phase 8** | **Fraud Detection API (FastAPI)** | 🟢 **Completed** | Milestone 8 (Current) |
-| **Phase 9** | **Database & Persistence (PostgreSQL)** | ⚪ Pending | Next Milestone |
+| **Phase 8** | **Fraud Detection API (FastAPI)** | 🟢 **Completed** | Milestone 8 |
+| **Phase 9** | **Database & Persistence (PostgreSQL)** | 🟢 **Completed** | Milestone 9 (Current) |
 | **Phase 10** | **Real-Time Detection & Benchmarking** | ⚪ Pending | Phase 10 |
 | **Phase 11** | **Fraud Intelligence Dashboard** | ⚪ Pending | Phase 11 |
 | **Phase 12** | **Human Review & Case Management** | ⚪ Pending | Phase 12 |
@@ -141,6 +141,46 @@
 
 ---
 
+## ✅ Phase 9 Deliverable Checklist (Database & Persistence — PostgreSQL)
+
+- [x] **Database Engine, Pool & Session Management (`backend/app/db/`)**:
+  - Implemented lazy `AsyncEngine` with QueuePool connection pooling in `backend/app/db/session.py`.
+  - Built `get_db_session` FastAPI dependency guaranteeing request isolation, automatic rollback on unhandled exceptions, and explicit commit semantics.
+  - Implemented graceful pool disposal in FastAPI lifespan shutdown hook.
+  - Added sanitized `check_db_health()` connectivity probe (`SELECT 1`) in `backend/app/db/health.py`.
+- [x] **SQLAlchemy 2.0 ORM Relational Models (`backend/app/db/models/`)**:
+  - Modeled 6 core tables: `transactions`, `risk_evaluations`, `evaluation_rule_matches`, `evaluation_reason_codes`, `evaluation_feature_attributions`, and `audit_logs`.
+  - Declared `UUIDPrimaryKeyMixin` and `TimestampMixin` for base modeling.
+  - Enforced strict relational foreign keys: `ON DELETE RESTRICT` from evaluations to transactions; `ON DELETE CASCADE` from explanations to evaluations.
+  - Enforced database check constraints: `chk_transactions_amount_positive`, `chk_risk_evaluations_model_score`, and `chk_risk_evaluations_risk_score`.
+  - Declared partial unique index `uq_transactions_external_tx_id` on `transactions(external_transaction_id) WHERE external_transaction_id IS NOT NULL`.
+- [x] **Alembic Migration Foundation (`backend/alembic/`)**:
+  - Configured `alembic.ini`, `backend/alembic/env.py`, and `script.py.mako`.
+  - Created baseline revision `0001_initial_core_tables.py` creating all 6 core tables, constraints, and indexes.
+  - Created revision `0002_add_unique_index_external_tx_id.py` managing the partial unique index.
+  - Verified offline SQL DDL generation without requiring a live database connection.
+- [x] **Repository Layer (`backend/app/repositories/`)**:
+  - Implemented typed asynchronous repositories: `TransactionRepository`, `RiskEvaluationRepository`, `RuleMatchRepository`, `ReasonCodeRepository`, `FeatureAttributionRepository`, `AuditLogRepository`.
+  - Added `get_with_evaluations_by_external_id()` using `selectinload` for eager fetching of child explanation collections.
+  - Designed domain exception hierarchy: `PersistenceError`, `PersistenceConflictError`, `PersistenceNotFoundError`.
+- [x] **Unit of Work & Orchestration Service (`backend/app/services/`)**:
+  - Implemented `FraudPersistenceUnitOfWork` coordinating all 6 repositories under a single transaction boundary with async context manager safety.
+  - Built `FraudPersistenceService` orchestrating strict staging order (`Transaction` $\to$ `flush()` $\to$ `RiskEvaluation` $\to$ `flush()` $\to$ Child collections & `AuditLog` $\to$ `commit()`).
+  - Added selective `IntegrityError` discriminator translating unique index conflicts to `PersistenceConflictError` while isolating unrelated database violations into `PersistenceError`.
+- [x] **API Persistence Mapping & Idempotency Protection (`backend/app/api/`, `backend/app/services/`)**:
+  - Implemented `RiskPersistenceMapper` for zero-database in-memory mapping from request/response to typed commands.
+  - Built deterministic canonical SHA-256 request fingerprinting (`compute_request_fingerprint`) and payload equivalence verification (`is_payload_equivalent`).
+  - Built complete `PredictionResponse` reconstruction from database entities (`reconstruct_prediction_response`).
+  - Wired `/predict` and `/api/v1/predict` with pre-inference replay fast path (200 OK), payload conflict detection (409 Conflict), correlation context extraction, and concurrency race recovery.
+  - Implemented 4-way timestamp semantics and strict 128-character ID length boundaries.
+- [x] **Comprehensive Testing & Validation**:
+  - 231 unit tests passing across ORM models, session, health, repositories, Unit of Work, mapper, endpoint hardening, and idempotency.
+  - 35 integration tests passing (including 24 database persistence integration tests against live PostgreSQL).
+  - 624 / 624 total tests passing across full repository test suite.
+  - Documented authoritative Phase 9 report in `docs/phase_9_persistence_completion_report.md`.
+
+---
+
 ## 🏛 Architectural Decision Records (ADRs)
 
 ### ADR-001: Modular Monorepo Scaffolding
@@ -180,9 +220,12 @@
 - **Status**: Accepted (Phase 7).
 
 ### ADR-013: FastAPI Microservice Architecture & Zero-Mutation Inference
-- **Context**: Upstream payment gateways and web dashboards require a low-overhead, strictly validated REST interface to evaluate transactions in real-time, retrieve explainable decision reason codes, and inspect rule telemetry without modifying frozen ML models or datasets.
-- **Decision**: Build the REST API using **FastAPI** and **Pydantic v2**, managing `RiskEvaluator` and `RuleEngine` lifecycles via dependency injection. Pre-warm model artifacts in the lifespan context to minimize runtime cold starts. Expose both root-level (`/health`, `/predict`) and versioned (`/api/v1/health`, `/api/v1/predict`) endpoints. Validate the exact 55-feature schema while preserving transaction metadata passthrough.
 - **Status**: Accepted (Phase 8).
+
+### ADR-014: Relational PostgreSQL Persistence, Unit of Work & Idempotency Architecture
+- **Context**: Real-time fraud detection decisions must be persisted atomically for financial audits, dispute investigation, and model monitoring without adding unbounded latency or creating duplicate records during client retries and concurrent race conditions.
+- **Decision**: Persist evaluation aggregates into PostgreSQL across 6 relational tables under an explicit `FraudPersistenceUnitOfWork` transaction boundary. Use `external_transaction_id` with a partial unique index as the primary idempotency key. Fast-path identical replays before ML inference (returning `200 OK`), reject conflicting payload reuse with `409 Conflict`, and resolve concurrent transaction races via database constraint recovery.
+- **Status**: Accepted (Phase 9).
 
 ---
 
@@ -192,12 +235,13 @@
 2. **Margin vs Probability Additivity**: TreeSHAP attributions are additive in raw log-odds margin space. Due to the non-linearity of the logistic sigmoid link function, individual feature contributions cannot be linearly summed in probability space.
 3. **Review Queue Operational Sizing**: Hybrid rule overrides add manual review volume (+168.4% in OOT holdout). Real-world deployments must size analyst capacity accordingly.
 4. **Static Cost Assumptions**: Current threshold benchmarks assume fixed unit costs ($C_{\text{FP}}=\$15, C_{\text{FN}}=\$200, C_{\text{REV}}=\$5$). Dynamic amount-weighted scoring is recommended for future financial optimization.
+5. **Distributed Ambiguous Commit Outcome**: If network connectivity drops while awaiting PostgreSQL `COMMIT` acknowledgement, the outcome is inherently ambiguous across distributed nodes. The idempotency design safely handles both outcomes upon subsequent retry: if the transaction committed, the retry replays the result (`200 OK`); if the commit was rolled back by PostgreSQL, the retry performs clean evaluation and persistence.
 
 ---
 
-## ⏭ Next Step: Preparation for Phase 9 (Database & Persistence — PostgreSQL)
+## ⏭ Next Step: Preparation for Phase 10 (Real-Time Detection & Benchmarking)
 
-When approved to start Phase 9:
-- Design and implement relational PostgreSQL schemas with SQLAlchemy ORM and Alembic migrations.
-- Model `users`/`accounts`, `transactions`, `risk_evaluations`, `cases`, and immutable `audit_logs`.
-- Persist incoming transactions and risk evaluation results asynchronously via the FastAPI service layer.
+When approved to start Phase 10:
+- Build the high-throughput end-to-end transaction streaming and scoring pipeline.
+- Measure latency distributions ($P_{50}, P_{95}, P_{99}$) and throughput benchmarks (transactions per second) under concurrent load.
+- Validate end-to-end SLA compliance under sustained traffic.
