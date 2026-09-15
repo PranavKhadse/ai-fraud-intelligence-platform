@@ -17,6 +17,7 @@ from backend.app.core.config import settings
 from backend.app.api.v1.router import api_v1_router
 from backend.app.api.v1.endpoints import health, predict
 from backend.app.services.risk_service import get_risk_service
+from backend.app.db import close_db_engine
 
 # Configure application logging
 logging.basicConfig(
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     FastAPI lifespan context manager for startup pre-warming and graceful shutdown.
     Pre-loads the frozen champion model, preprocessor, and rule catalog into memory.
+    Disposes of database connection pools gracefully upon shutdown.
     """
     logger.info("Initializing FastAPI Fraud Detection & Risk Intelligence API...")
     try:
@@ -46,6 +48,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     logger.info("Shutting down Fraud Detection & Risk Intelligence API...")
+    try:
+        await close_db_engine()
+    except Exception as e:
+        logger.warning(f"Error disposing database engine during shutdown: {e}")
 
 
 def create_application() -> FastAPI:
