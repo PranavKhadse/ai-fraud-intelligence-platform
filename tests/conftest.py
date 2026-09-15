@@ -86,7 +86,7 @@ async def pg_engine() -> AsyncGenerator[Optional[AsyncEngine], None]:
 
     engine = create_async_engine(test_url, poolclass=NullPool, echo=False)
 
-    # Initialize schema tables
+    # Initialize schema tables and indexes declaratively from Base.metadata
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

@@ -91,9 +91,60 @@ async def predict_transaction(
 ) -> PredictionResponse:
     """
     Evaluate fraud risk and return calibrated score, risk tier, action, reason codes, and rule telemetry,
-    while atomically persisting the evaluation record into the relational persistence layer.
+    while atomically persisting the evaluation record into the relational persistence layer with full idempotency.
     """
-    # 1. Monotonic latency measurement around ML inference & explainability
+    # 1. Normalize and validate optional external_transaction_id
+    ext_tx_id: Optional[str] = None
+    raw_tx_id = getattr(request, "transaction_id", None)
+    if raw_tx_id is not None:
+        cleaned_id = str(raw_tx_id).strip()
+        if not cleaned_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Transaction identifier 'transaction_id' cannot be empty or whitespace-only.",
+            )
+        if len(cleaned_id) > 128:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Transaction identifier 'transaction_id' exceeds maximum length of 128 characters.",
+            )
+        ext_tx_id = cleaned_id
+
+    # 2. Pre-inference Idempotency Fast Path: Check if external transaction was already evaluated
+    if ext_tx_id:
+        try:
+            existing_tx = await persistence_service.get_existing_evaluation(ext_tx_id)
+            if existing_tx:
+                if RiskPersistenceMapper.is_payload_equivalent(request, existing_tx):
+                    logger.info(
+                        "Idempotent request replay for external_transaction_id='%s'",
+                        ext_tx_id,
+                    )
+                    return RiskPersistenceMapper.reconstruct_prediction_response(existing_tx)
+                else:
+                    logger.warning(
+                        "Conflicting payload for existing external_transaction_id='%s'",
+                        ext_tx_id,
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"Transaction with external_transaction_id '{ext_tx_id}' already exists with conflicting request payload.",
+                    )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                "Persistence failure during idempotency lookup for transaction '%s': %s",
+                ext_tx_id,
+                e,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistence failure checking transaction idempotency.",
+            )
+
+    # 3. Monotonic latency measurement around ML inference & explainability
     eval_start_time = time.perf_counter()
     try:
         prediction_response = risk_service.predict_transaction(request)
@@ -114,7 +165,7 @@ async def predict_transaction(
 
     eval_latency_ms = round((time.perf_counter() - eval_start_time) * 1000.0, 2)
 
-    # 2. Extract verified request lifecycle context
+    # 4. Extract verified request lifecycle context
     correlation_id = (
         http_request.headers.get("X-Correlation-ID")
         or http_request.headers.get("X-Request-ID")
@@ -126,12 +177,12 @@ async def predict_transaction(
         client_ip=client_ip,
         actor_id="fastapi_predict_api",
         evaluation_latency_ms=eval_latency_ms,
-        external_transaction_id=request.transaction_id,
+        external_transaction_id=ext_tx_id,
         account_id=request.account_id,
         transaction_timestamp=request.timestamp,
     )
 
-    # 3. Map prediction into persistence command
+    # 5. Map prediction into persistence command
     try:
         command = RiskPersistenceMapper.map_prediction_to_command(
             request=request,
@@ -153,17 +204,30 @@ async def predict_transaction(
             detail="Error preparing transaction persistence.",
         )
 
-    # 4. Atomically persist evaluation aggregate
+    # 6. Atomically persist evaluation aggregate
     try:
         await persistence_service.persist_evaluation(command)
     except PersistenceConflictError as e:
-        logger.warning(f"Duplicate transaction conflict for external ID '{request.transaction_id}': {e}")
+        # Resolve concurrent worker race condition: re-query committed transaction
+        if ext_tx_id:
+            try:
+                existing_tx = await persistence_service.get_existing_evaluation(ext_tx_id)
+                if existing_tx and RiskPersistenceMapper.is_payload_equivalent(request, existing_tx):
+                    logger.info(
+                        "Resolved concurrent race for external_transaction_id='%s' via idempotent replay",
+                        ext_tx_id,
+                    )
+                    return RiskPersistenceMapper.reconstruct_prediction_response(existing_tx)
+            except Exception:
+                pass
+
+        logger.warning(f"Duplicate transaction conflict for external ID '{ext_tx_id}': {e}")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Transaction with external_transaction_id '{request.transaction_id}' already exists.",
+            detail=f"Transaction with external_transaction_id '{ext_tx_id}' already exists with conflicting request payload.",
         )
     except PersistenceError as e:
-        logger.error(f"Database persistence failure for transaction '{request.transaction_id}': {e}", exc_info=True)
+        logger.error(f"Database persistence failure for transaction '{ext_tx_id}': {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Persistence failure storing evaluation result.",
@@ -171,11 +235,11 @@ async def predict_transaction(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected persistence error for transaction '{request.transaction_id}': {e}", exc_info=True)
+        logger.error(f"Unexpected persistence error for transaction '{ext_tx_id}': {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal error persisting evaluation.",
         )
 
-    # 5. Return unmodified PredictionResponse preserving 100% public schema contract
+    # 7. Return unmodified PredictionResponse preserving 100% public schema contract
     return prediction_response

@@ -22,7 +22,7 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from backend.app.db.models.audit_log import AuditLog
 from backend.app.db.models.enums import (
@@ -47,10 +47,25 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
 @pytest_asyncio.fixture(scope="function")
-async def async_api_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Provide an asynchronous httpx client bound to the active test database session."""
+async def async_api_client(
+    db_session: AsyncSession, pg_engine: AsyncEngine
+) -> AsyncGenerator[AsyncClient, None]:
+    """Provide an asynchronous httpx client with request-scoped database sessions."""
+    session_factory = async_sessionmaker(
+        bind=pg_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+        autocommit=False,
+    )
+
     async def override_get_db_session():
-        yield db_session
+        async with session_factory() as session:
+            try:
+                yield session
+            except Exception:
+                await session.rollback()
+                raise
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     transport = ASGITransport(app=app)
@@ -149,23 +164,35 @@ class TestPredictPersistenceIntegration:
         assert audit.client_ip in ("127.0.0.1", "testclient")
         assert audit.payload["external_transaction_id"] == "TX_PERSIST_001"
 
-    async def test_2_predict_duplicate_external_transaction_id_returns_409(
+    async def test_2_predict_idempotent_replay_and_conflict_detection(
         self, async_api_client: AsyncClient, sample_payload: Dict[str, Any]
     ):
-        """Test 2: Duplicate external_transaction_id returns HTTP 409 Conflict with descriptive message."""
+        """Test 2: Identical duplicate payload replays original result (200); conflicting payload returns 409."""
         payload = sample_payload.copy()
-        payload["transaction_id"] = "TX_DUPLICATE_ID_888"
+        payload["transaction_id"] = "TX_IDEMPOTENT_REPLAY_888"
 
-        # First evaluation succeeds
+        # 1. First evaluation succeeds
         resp1 = await async_api_client.post("/predict", json=payload)
         assert resp1.status_code == 200
+        data1 = resp1.json()
 
-        # Second evaluation with duplicate ID must return 409 Conflict
+        # 2. Second evaluation with IDENTICAL payload returns original result (HTTP 200 Idempotent Replay)
         resp2 = await async_api_client.post("/predict", json=payload)
-        assert resp2.status_code == 409
-        error_detail = resp2.json()["detail"]
-        assert "TX_DUPLICATE_ID_888" in error_detail
-        assert "already exists" in error_detail
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        assert data1["risk_score"] == data2["risk_score"]
+        assert data1["decision_action"] == data2["decision_action"]
+        assert data1["evaluated_at"] == data2["evaluated_at"]
+        assert len(data1["reason_codes"]) == len(data2["reason_codes"])
+
+        # 3. Third evaluation with CONFLICTING payload (different amount) returns HTTP 409 Conflict
+        conflicting_payload = payload.copy()
+        conflicting_payload["amount"] = 8888.88
+        resp3 = await async_api_client.post("/predict", json=conflicting_payload)
+        assert resp3.status_code == 409
+        error_detail = resp3.json()["detail"]
+        assert "TX_IDEMPOTENT_REPLAY_888" in error_detail
+        assert "conflicting request payload" in error_detail
 
     async def test_3_predict_context_extraction_x_request_id(
         self, async_api_client: AsyncClient, db_session: AsyncSession, sample_payload: Dict[str, Any]
@@ -326,15 +353,17 @@ class TestPredictPersistenceIntegration:
         self, async_api_client: AsyncClient, db_session: AsyncSession, sample_payload: Dict[str, Any]
     ):
         """Test 11: Database session remains completely healthy and operational after an aborted 409 rollback."""
-        payload_dup = sample_payload.copy()
-        payload_dup["transaction_id"] = "TX_ROLLBACK_RECOVERY_001"
+        payload_base = sample_payload.copy()
+        payload_base["transaction_id"] = "TX_ROLLBACK_RECOVERY_001"
 
         # 1. First transaction succeeds
-        r1 = await async_api_client.post("/predict", json=payload_dup)
+        r1 = await async_api_client.post("/predict", json=payload_base)
         assert r1.status_code == 200
 
-        # 2. Second transaction fails with 409 and triggers rollback
-        r2 = await async_api_client.post("/predict", json=payload_dup)
+        # 2. Second transaction with CONFLICTING payload fails with 409 and triggers rollback
+        payload_conflict = payload_base.copy()
+        payload_conflict["amount"] = 9999.99
+        r2 = await async_api_client.post("/predict", json=payload_conflict)
         assert r2.status_code == 409
 
         # 3. Third distinct transaction succeeds on the active session
@@ -376,3 +405,131 @@ class TestPredictPersistenceIntegration:
         assert audit is not None
         assert audit.client_ip == "203.0.113.88"
 
+    async def test_13_predict_concurrent_duplicate_requests(
+        self, async_api_client: AsyncClient, db_session: AsyncSession, sample_payload: Dict[str, Any]
+    ):
+        """Test 13: Multiple concurrent identical requests succeed with 200 and insert exactly 1 DB record."""
+        import asyncio
+
+        payload = sample_payload.copy()
+        payload["transaction_id"] = "TX_CONCURRENT_RACE_001"
+
+        # Fire 5 concurrent identical requests simultaneously
+        tasks = [async_api_client.post("/predict", json=payload) for _ in range(5)]
+        responses = await asyncio.gather(*tasks)
+
+        # All 5 requests must return HTTP 200 OK
+        for resp in responses:
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["transaction_id"] == "TX_CONCURRENT_RACE_001"
+
+        # Verify exactly ONE transaction record and ONE evaluation record exist in the database
+        stmt_tx = select(Transaction).where(Transaction.external_transaction_id == "TX_CONCURRENT_RACE_001")
+        res_tx = await db_session.execute(stmt_tx)
+        tx_records = res_tx.scalars().all()
+        assert len(tx_records) == 1
+
+        stmt_eval = select(RiskEvaluation).where(RiskEvaluation.transaction_id == tx_records[0].id)
+        res_eval = await db_session.execute(stmt_eval)
+        eval_records = res_eval.scalars().all()
+        assert len(eval_records) == 1
+
+    async def test_14_predict_whitespace_transaction_id_returns_422(
+        self, async_api_client: AsyncClient, sample_payload: Dict[str, Any]
+    ):
+        """Test 14: Blank or whitespace-only transaction_id is rejected with HTTP 422."""
+        payload = sample_payload.copy()
+        payload["transaction_id"] = "    "
+
+        response = await async_api_client.post("/predict", json=payload)
+        assert response.status_code == 422
+        assert "cannot be empty or whitespace-only" in response.json()["detail"]
+
+    async def test_15_predict_concurrent_conflicting_requests(
+        self, async_api_client: AsyncClient, db_session: AsyncSession, sample_payload: Dict[str, Any]
+    ):
+        """Test 15: Concurrent conflicting requests result in one 200 OK and one 409 Conflict."""
+        import asyncio
+
+        base_payload = sample_payload.copy()
+        base_payload["transaction_id"] = "TX_CONCURRENT_CONFLICT_001"
+
+        conflicting_payload = base_payload.copy()
+        conflicting_payload["amount"] = 99999.00
+
+        # Run 2 concurrent requests with the SAME transaction_id but DIFFERENT amounts
+        tasks = [
+            async_api_client.post("/predict", json=base_payload),
+            async_api_client.post("/predict", json=conflicting_payload),
+        ]
+        responses = await asyncio.gather(*tasks)
+
+        status_codes = [r.status_code for r in responses]
+        assert 200 in status_codes
+        assert 409 in status_codes
+
+        # Exactly 1 transaction record committed in PostgreSQL
+        stmt_tx = select(Transaction).where(
+            Transaction.external_transaction_id == "TX_CONCURRENT_CONFLICT_001"
+        )
+        res_tx = await db_session.execute(stmt_tx)
+        tx_records = res_tx.scalars().all()
+        assert len(tx_records) == 1
+
+    async def test_16_predict_replayed_response_json_exact_match(
+        self, async_api_client: AsyncClient, sample_payload: Dict[str, Any]
+    ):
+        """Test 16: Complete field-by-field JSON response equality between original evaluation and replayed response."""
+        payload = sample_payload.copy()
+        payload["transaction_id"] = "TX_JSON_EXACT_MATCH_001"
+
+        # 1. Initial live evaluation
+        resp1 = await async_api_client.post("/predict", json=payload)
+        assert resp1.status_code == 200
+        json1 = resp1.json()
+
+        # 2. Idempotent replay from database
+        resp2 = await async_api_client.post("/predict", json=payload)
+        assert resp2.status_code == 200
+        json2 = resp2.json()
+
+        # 3. Field-by-field verification
+        assert json1["transaction_id"] == json2["transaction_id"] == "TX_JSON_EXACT_MATCH_001"
+        assert json1["risk_score"] == json2["risk_score"]
+        assert json1["risk_tier"] == json2["risk_tier"]
+        assert json1["decision_action"] == json2["decision_action"]
+        assert json1["policy_mode"] == json2["policy_mode"]
+        assert json1["reason"] == json2["reason"]
+        assert json1["is_overridden"] == json2["is_overridden"]
+        assert json1["rule_action"] == json2["rule_action"]
+        assert json1["rules_triggered"] == json2["rules_triggered"]
+        assert json1["model_version"] == json2["model_version"]
+        assert json1["evaluated_at"] == json2["evaluated_at"]
+
+        # 4. Reason codes list equality
+        assert len(json1["reason_codes"]) == len(json2["reason_codes"])
+        for rc1, rc2 in zip(json1["reason_codes"], json2["reason_codes"]):
+            assert rc1["code"] == rc2["code"]
+            assert rc1["rank"] == rc2["rank"]
+            assert rc1["headline"] == rc2["headline"]
+            assert rc1["severity"] == rc2["severity"]
+
+        # 5. Top risk and mitigating factor equality
+        assert len(json1["top_risk_factors"]) == len(json2["top_risk_factors"])
+        for rf1, rf2 in zip(json1["top_risk_factors"], json2["top_risk_factors"]):
+            assert rf1["feature_name"] == rf2["feature_name"]
+            assert rf1["rank"] == rf2["rank"]
+            assert rf1["direction"] == rf2["direction"]
+            assert abs(rf1["shap_value"] - rf2["shap_value"]) < 1e-4
+            assert abs(rf1["relative_contribution_pct"] - rf2["relative_contribution_pct"]) < 1e-4
+
+        assert len(json1["top_mitigating_factors"]) == len(json2["top_mitigating_factors"])
+        for mf1, mf2 in zip(json1["top_mitigating_factors"], json2["top_mitigating_factors"]):
+            assert mf1["feature_name"] == mf2["feature_name"]
+            assert mf1["rank"] == mf2["rank"]
+            assert mf1["direction"] == mf2["direction"]
+            assert abs(mf1["shap_value"] - mf2["shap_value"]) < 1e-4
+
+        # 6. Complete serialized dictionary equality
+        assert json1 == json2

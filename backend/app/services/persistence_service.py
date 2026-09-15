@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import uuid
 
 from fastapi import Depends
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models.audit_log import AuditLog
@@ -34,7 +35,7 @@ from backend.app.db.models.risk_evaluation import RiskEvaluation
 from backend.app.db.models.rule_match import EvaluationRuleMatch
 from backend.app.db.models.transaction import Transaction
 from backend.app.db.session import get_db_session
-from backend.app.repositories.exceptions import PersistenceConflictError
+from backend.app.repositories.exceptions import PersistenceConflictError, PersistenceError
 from backend.app.services.unit_of_work import FraudPersistenceUnitOfWork
 
 
@@ -444,10 +445,62 @@ class FraudPersistenceService:
                 persisted_at=datetime.now(timezone.utc),
             )
 
+        except PersistenceConflictError:
+            # Rollback and propagate clean duplicate conflict
+            await self._uow.rollback()
+            raise
+        except IntegrityError as exc:
+            # Defensive rollback
+            await self._uow.rollback()
+            err_msg = str(exc).lower()
+            orig_msg = str(getattr(exc, "orig", "")).lower()
+            is_external_tx_conflict = (
+                ext_id is not None
+                and (
+                    "uq_transactions_external_tx_id" in err_msg
+                    or "uq_transactions_external_tx_id" in orig_msg
+                    or "external_transaction_id" in err_msg
+                    or "external_transaction_id" in orig_msg
+                    or "unique constraint" in err_msg
+                    or "unique constraint" in orig_msg
+                    or "duplicate key value" in err_msg
+                    or "duplicate key value" in orig_msg
+                    or "unique" in err_msg
+                )
+            )
+            if is_external_tx_conflict:
+                raise PersistenceConflictError(
+                    f"Transaction with external_transaction_id '{ext_id}' already exists.",
+                    details={"external_transaction_id": ext_id},
+                ) from exc
+            else:
+                raise PersistenceError(
+                    f"Database integrity constraint violation: {exc}",
+                    details={"orig": str(exc)},
+                ) from exc
         except Exception:
             # Execute defensive rollback via Unit of Work and re-raise
             await self._uow.rollback()
             raise
+
+    async def get_existing_evaluation(
+        self,
+        external_transaction_id: str,
+    ) -> Optional[Transaction]:
+        """
+        Retrieve an existing persisted Transaction aggregate with evaluations by external transaction ID.
+
+        Args:
+            external_transaction_id: External transaction reference string.
+
+        Returns:
+            The Transaction ORM entity with eager-loaded evaluations and child explanation collections,
+            or None if not found.
+
+        Raises:
+            PersistenceError: If an unexpected database query failure occurs.
+        """
+        return await self._uow.transactions.get_with_evaluations_by_external_id(external_transaction_id)
 
 
 def get_persistence_service(

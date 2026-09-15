@@ -16,6 +16,8 @@ Design Principles:
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
+import hashlib
+import json
 import math
 from typing import Any, Dict, List, Optional, Sequence, Union
 import uuid
@@ -228,6 +230,19 @@ class RiskPersistenceMapper:
     """
 
     @classmethod
+    def extract_features_snapshot(
+        cls,
+        raw: Union[TransactionPredictRequest, Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Extract and validate the canonical 55-feature snapshot dictionary."""
+        raw_dict = (
+            raw.model_dump(exclude_unset=False)
+            if isinstance(raw, TransactionPredictRequest)
+            else dict(raw)
+        )
+        return _extract_features_snapshot(raw_dict)
+
+    @classmethod
     def map_prediction_to_command(
         cls,
         request: Union[TransactionPredictRequest, Dict[str, Any]],
@@ -371,10 +386,17 @@ class RiskPersistenceMapper:
                 "Missing required 'account_id'. An account identifier must be provided in request payload or context."
             )
         account_id = str(raw_account_id).strip()
+        if len(account_id) > 128:
+            raise ValueError("account_id exceeds maximum length of 128 characters.")
 
         # Merchant ID resolution
         raw_merchant_id = ctx.merchant_id or raw_dict.get("merchant_id")
         merchant_id = str(raw_merchant_id).strip() if raw_merchant_id is not None else None
+        if merchant_id and len(merchant_id) > 128:
+            raise ValueError("merchant_id exceeds maximum length of 128 characters.")
+
+        if ext_tx_id and len(str(ext_tx_id).strip()) > 128:
+            raise ValueError("external_transaction_id exceeds maximum length of 128 characters.")
 
         # Currency resolution
         currency = _validate_currency(ctx.currency or raw_dict.get("currency"))
@@ -809,6 +831,269 @@ class RiskPersistenceMapper:
             event_timestamp=datetime.now(timezone.utc),
         )
 
+    # --------------------------------------------------------------------------
+    # Idempotency & Response Replay Utilities
+    # --------------------------------------------------------------------------
+
+    @classmethod
+    def compute_request_fingerprint(
+        cls,
+        request: Union[TransactionPredictRequest, Dict[str, Any]],
+    ) -> str:
+        """
+        Compute a deterministic canonical SHA-256 fingerprint for a transaction request payload.
+
+        Canonicalizes core identifiers, financial amounts, categoricals, coordinates,
+        and all 55 predictive tabular features into a sorted, normalized JSON string.
+        """
+        raw_dict = (
+            request.model_dump(exclude_unset=False)
+            if isinstance(request, TransactionPredictRequest)
+            else dict(request)
+        )
+
+        canonical: Dict[str, Any] = {
+            "account_id": str(raw_dict.get("account_id", "")).strip(),
+            "merchant_id": str(raw_dict.get("merchant_id", "")).strip() if raw_dict.get("merchant_id") else "",
+            "amount": f"{float(raw_dict.get('amount', 0.0)):.2f}",
+            "currency": str(raw_dict.get("currency", "USD")).strip().upper(),
+            "merchant_category": str(raw_dict.get("merchant_category", "")).strip(),
+            "job_category": str(raw_dict.get("job_category", "")).strip(),
+            "city_pop": int(raw_dict.get("city_pop", 0)),
+            "cardholder_lat": f"{float(raw_dict.get('cardholder_lat', 0.0)):.6f}",
+            "cardholder_long": f"{float(raw_dict.get('cardholder_long', 0.0)):.6f}",
+            "merchant_lat": f"{float(raw_dict.get('merchant_lat', 0.0)):.6f}",
+            "merchant_long": f"{float(raw_dict.get('merchant_long', 0.0)):.6f}",
+            "timestamp": str(raw_dict.get("timestamp", "")).strip() if raw_dict.get("timestamp") else "",
+        }
+
+        # Format all 55 predictive features deterministically
+        try:
+            raw_features = cls.extract_features_snapshot(request)
+        except Exception:
+            raw_features = {}
+
+        features: Dict[str, Any] = {}
+        for col in sorted(raw_features.keys()):
+            val = raw_features[col]
+            if isinstance(val, (int, bool)):
+                features[col] = int(val)
+            elif isinstance(val, float):
+                features[col] = f"{val:.6f}"
+            else:
+                features[col] = str(val) if val is not None else ""
+        canonical["features"] = features
+
+        canonical_json = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def is_payload_equivalent(
+        cls,
+        request: Union[TransactionPredictRequest, Dict[str, Any]],
+        existing_tx: Any,
+    ) -> bool:
+        """
+        Check if an incoming transaction request is logically equivalent to a persisted Transaction entity.
+
+        Compares account_id, merchant_id, amount, currency, merchant_category, job_category,
+        coordinates, city_pop, timestamp (if provided), and all 55 features from features_snapshot.
+        """
+        raw_dict = (
+            request.model_dump(exclude_unset=False)
+            if isinstance(request, TransactionPredictRequest)
+            else dict(request)
+        )
+
+        # 1. Account ID
+        req_account = str(raw_dict.get("account_id", "")).strip()
+        if req_account != existing_tx.account_id:
+            return False
+
+        # 2. Merchant ID (if provided)
+        req_merchant_id = raw_dict.get("merchant_id")
+        if req_merchant_id is not None:
+            clean_merchant = str(req_merchant_id).strip()
+            if clean_merchant and clean_merchant != (existing_tx.merchant_id or ""):
+                return False
+
+        # 3. Amount (rounded to 2 decimal places)
+        req_amount = Decimal(str(round(float(raw_dict.get("amount", 0.0)), 2)))
+        if req_amount != existing_tx.amount:
+            return False
+
+        # 4. Currency
+        req_currency = str(raw_dict.get("currency", "USD")).strip().upper()
+        if req_currency != existing_tx.currency:
+            return False
+
+        # 5. Categoricals
+        if str(raw_dict.get("merchant_category", "")).strip() != existing_tx.merchant_category:
+            return False
+        if str(raw_dict.get("job_category", "")).strip() != existing_tx.job_category:
+            return False
+
+        # 6. City pop
+        if int(raw_dict.get("city_pop", 0)) != existing_tx.city_pop:
+            return False
+
+        # 7. Coordinates (rounded to 6 decimal places)
+        req_c_lat = Decimal(str(round(float(raw_dict.get("cardholder_lat", 0.0)), 6)))
+        if req_c_lat != existing_tx.cardholder_lat:
+            return False
+
+        req_c_long = Decimal(str(round(float(raw_dict.get("cardholder_long", 0.0)), 6)))
+        if req_c_long != existing_tx.cardholder_long:
+            return False
+
+        req_m_lat = Decimal(str(round(float(raw_dict.get("merchant_lat", 0.0)), 6)))
+        if req_m_lat != existing_tx.merchant_lat:
+            return False
+
+        req_m_long = Decimal(str(round(float(raw_dict.get("merchant_long", 0.0)), 6)))
+        if req_m_long != existing_tx.merchant_long:
+            return False
+
+        # 8. Timestamp (if explicitly provided in request)
+        req_ts_raw = raw_dict.get("timestamp")
+        if req_ts_raw is not None and str(req_ts_raw).strip():
+            try:
+                req_ts = _parse_iso_or_datetime(req_ts_raw, "timestamp")
+                existing_ts = getattr(existing_tx, "transaction_timestamp", None)
+                if existing_ts is not None:
+                    if abs((req_ts - existing_ts).total_seconds()) > 1.0:
+                        return False
+            except Exception:
+                return False
+
+        # 9. Features Snapshot (55 predictive columns)
+        try:
+            req_snapshot = cls.extract_features_snapshot(request)
+        except Exception:
+            return False
+
+        snapshot = existing_tx.features_snapshot or {}
+        for col, req_val in req_snapshot.items():
+            if col not in snapshot:
+                return False
+            snap_val = snapshot[col]
+            if isinstance(req_val, (int, float)) and isinstance(snap_val, (int, float)):
+                if not math.isclose(float(req_val), float(snap_val), rel_tol=1e-5, abs_tol=1e-5):
+                    return False
+            else:
+                if str(req_val) != str(snap_val):
+                    return False
+
+        return True
+
+    @classmethod
+    def reconstruct_prediction_response(
+        cls,
+        existing_tx: Any,
+        evaluation: Optional[Any] = None,
+    ) -> PredictionResponse:
+        """
+        Reconstruct a canonical PredictionResponse from persisted database entities without rerunning ML inference.
+        """
+        eval_record = evaluation
+        if eval_record is None:
+            evaluations = getattr(existing_tx, "evaluations", None)
+            if not evaluations:
+                raise ValueError("Cannot reconstruct PredictionResponse: Transaction has no associated evaluations.")
+            eval_record = evaluations[0]
+
+        # Rule matches (sorted deterministically by evaluation priority)
+        rule_matches = [
+            RuleMatchResponse(
+                rule_id=rm.rule_id,
+                description=rm.description,
+                feature_name=rm.feature_name,
+                operator=rm.operator,
+                comparison_value=rm.comparison_value,
+                outcome=rm.outcome.value if hasattr(rm.outcome, "value") else str(rm.outcome),
+                rule_type=rm.rule_type.value if hasattr(rm.rule_type, "value") else str(rm.rule_type),
+                priority=rm.priority,
+            )
+            for rm in sorted(
+                (getattr(eval_record, "rule_matches", None) or []),
+                key=lambda x: x.priority,
+            )
+        ]
+
+        # Distinct rule IDs matching evaluation order
+        rules_triggered = [rm.rule_id for rm in rule_matches]
+
+        # Reason codes (ordered by rank)
+        reason_codes = [
+            ReasonCodeResponse(
+                code=rc.code,
+                headline=rc.headline,
+                description=rc.description,
+                category=rc.category,
+                source=rc.source.value if hasattr(rc.source, "value") else str(rc.source),
+                severity=rc.severity.value if hasattr(rc.severity, "value") else str(rc.severity),
+                rank=rc.rank,
+            )
+            for rc in sorted(
+                (getattr(eval_record, "reason_codes", None) or []),
+                key=lambda x: x.rank,
+            )
+        ]
+
+        # Feature attributions (ordered by rank)
+        raw_attributions = getattr(eval_record, "feature_attributions", None) or []
+        top_risk_factors: List[FeatureAttributionResponse] = []
+        top_mitigating_factors: List[FeatureAttributionResponse] = []
+
+        for fa in sorted(raw_attributions, key=lambda x: x.rank):
+            direction_str = fa.direction.value if hasattr(fa.direction, "value") else str(fa.direction)
+            attr_resp = FeatureAttributionResponse(
+                feature_name=fa.feature_name,
+                display_name=fa.display_name,
+                raw_value=fa.raw_value,
+                shap_value=float(fa.shap_value),
+                direction=direction_str,
+                relative_contribution_pct=float(fa.relative_contribution_pct),
+                rank=fa.rank,
+            )
+            if direction_str == AttributionDirection.RISK_INCREASING.value:
+                top_risk_factors.append(attr_resp)
+            elif direction_str == AttributionDirection.MITIGATING.value:
+                top_mitigating_factors.append(attr_resp)
+
+        # Enums and fields
+        risk_tier_str = eval_record.risk_tier.value if hasattr(eval_record.risk_tier, "value") else str(eval_record.risk_tier)
+        decision_action_str = eval_record.decision_action.value if hasattr(eval_record.decision_action, "value") else str(eval_record.decision_action)
+        policy_mode_str = eval_record.policy_mode.value if hasattr(eval_record.policy_mode, "value") else str(eval_record.policy_mode)
+        rule_action_str = None
+        if eval_record.rule_action is not None:
+            rule_action_str = eval_record.rule_action.value if hasattr(eval_record.rule_action, "value") else str(eval_record.rule_action)
+
+        evaluated_at_str = (
+            eval_record.evaluated_at.isoformat()
+            if isinstance(eval_record.evaluated_at, datetime)
+            else str(eval_record.evaluated_at)
+        )
+
+        return PredictionResponse(
+            transaction_id=existing_tx.external_transaction_id,
+            model_score=float(eval_record.model_score),
+            risk_score=int(eval_record.risk_score),
+            risk_tier=risk_tier_str,
+            decision_action=decision_action_str,
+            policy_mode=policy_mode_str,
+            reason=eval_record.decision_reason,
+            is_overridden=bool(eval_record.is_overridden),
+            rule_action=rule_action_str,
+            rules_triggered=rules_triggered,
+            rule_matches=rule_matches,
+            reason_codes=reason_codes,
+            top_risk_factors=top_risk_factors,
+            top_mitigating_factors=top_mitigating_factors,
+            model_version=eval_record.model_version,
+            evaluated_at=evaluated_at_str,
+        )
+
 
 # ==============================================================================
 # Module Convenience Functions
@@ -832,9 +1117,35 @@ def map_explanation_to_command(
     return RiskPersistenceMapper.map_explanation_to_command(request, explanation, context)
 
 
+def compute_request_fingerprint(
+    request: Union[TransactionPredictRequest, Dict[str, Any]],
+) -> str:
+    """Convenience functional wrapper around `RiskPersistenceMapper.compute_request_fingerprint`."""
+    return RiskPersistenceMapper.compute_request_fingerprint(request)
+
+
+def is_payload_equivalent(
+    request: Union[TransactionPredictRequest, Dict[str, Any]],
+    existing_tx: Any,
+) -> bool:
+    """Convenience functional wrapper around `RiskPersistenceMapper.is_payload_equivalent`."""
+    return RiskPersistenceMapper.is_payload_equivalent(request, existing_tx)
+
+
+def reconstruct_prediction_response(
+    existing_tx: Any,
+    evaluation: Optional[Any] = None,
+) -> PredictionResponse:
+    """Convenience functional wrapper around `RiskPersistenceMapper.reconstruct_prediction_response`."""
+    return RiskPersistenceMapper.reconstruct_prediction_response(existing_tx, evaluation)
+
+
 __all__ = [
     "RiskPersistenceMapper",
     "RiskEvaluationContext",
     "map_prediction_to_command",
     "map_explanation_to_command",
+    "compute_request_fingerprint",
+    "is_payload_equivalent",
+    "reconstruct_prediction_response",
 ]

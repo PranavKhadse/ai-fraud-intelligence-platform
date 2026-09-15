@@ -12,7 +12,9 @@ import uuid
 from sqlalchemy import select, exists
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from backend.app.db.models.risk_evaluation import RiskEvaluation
 from backend.app.db.models.transaction import Transaction
 from backend.app.repositories.exceptions import PersistenceError
 
@@ -86,6 +88,41 @@ class TransactionRepository:
         except SQLAlchemyError as exc:
             raise PersistenceError(
                 f"Failed to retrieve transaction by external ID '{external_transaction_id}': {exc}"
+            ) from exc
+
+    async def get_with_evaluations_by_external_id(
+        self,
+        external_transaction_id: str,
+    ) -> Optional[Transaction]:
+        """
+        Query a Transaction by its external ID with its associated evaluations, rule matches,
+        reason codes, and feature attributions eager loaded.
+
+        Args:
+            external_transaction_id: External transaction reference string.
+
+        Returns:
+            The Transaction ORM entity with eager-loaded evaluations and child explanation collections,
+            or None if not found.
+
+        Raises:
+            PersistenceError: If an unexpected database query failure occurs.
+        """
+        try:
+            stmt = (
+                select(Transaction)
+                .where(Transaction.external_transaction_id == external_transaction_id)
+                .options(
+                    selectinload(Transaction.evaluations).selectinload(RiskEvaluation.rule_matches),
+                    selectinload(Transaction.evaluations).selectinload(RiskEvaluation.reason_codes),
+                    selectinload(Transaction.evaluations).selectinload(RiskEvaluation.feature_attributions),
+                )
+            )
+            result = await self._session.execute(stmt)
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as exc:
+            raise PersistenceError(
+                f"Failed to retrieve transaction with evaluations for external ID '{external_transaction_id}': {exc}"
             ) from exc
 
     async def exists_by_external_id(

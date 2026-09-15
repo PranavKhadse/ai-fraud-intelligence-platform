@@ -85,6 +85,22 @@ class TestInitialMigrationRevision:
         assert callable(initial_migration.downgrade)
 
 
+class TestUniqueIndexMigrationRevision:
+    """Validates the 0002 partial unique index migration script structure."""
+
+    def test_unique_index_migration_file_exists(self):
+        migration_file = Path("backend/alembic/versions/0002_add_unique_index_external_tx_id.py")
+        assert migration_file.exists()
+
+    def test_unique_index_migration_attributes(self):
+        unique_migration = importlib.import_module("backend.alembic.versions.0002_add_unique_index_external_tx_id")
+
+        assert unique_migration.revision == "0002_add_unique_index_external_tx_id"
+        assert unique_migration.down_revision == "0001_initial_core_tables"
+        assert callable(unique_migration.upgrade)
+        assert callable(unique_migration.downgrade)
+
+
 class TestOfflineSQLGeneration:
     """Validates offline SQL DDL generation without a live PostgreSQL database."""
 
@@ -127,6 +143,11 @@ class TestOfflineSQLGeneration:
         assert "ix_risk_evaluations_action_tier_date" in generated_sql
         assert "ix_risk_evaluations_model_ver_date" in generated_sql
         assert "ix_audit_logs_entity_lookup" in generated_sql
+
+    def test_partial_unique_index_in_sql(self, generated_sql: str):
+        assert "uq_transactions_external_tx_id" in generated_sql
+        assert "CREATE UNIQUE INDEX uq_transactions_external_tx_id" in generated_sql
+        assert "WHERE external_transaction_id IS NOT NULL" in generated_sql
 
     def test_numeric_and_json_types_in_sql(self, generated_sql: str):
         assert "NUMERIC(15, 2)" in generated_sql  # Transaction amount

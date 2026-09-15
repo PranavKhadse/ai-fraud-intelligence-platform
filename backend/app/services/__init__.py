@@ -24,8 +24,11 @@ from backend.app.services.persistence_service import (
 from backend.app.services.risk_persistence_mapper import (
     RiskEvaluationContext,
     RiskPersistenceMapper,
+    compute_request_fingerprint,
+    is_payload_equivalent,
     map_explanation_to_command,
     map_prediction_to_command,
+    reconstruct_prediction_response,
 )
 from backend.app.services.risk_service import (
     RiskService,
@@ -57,4 +60,7 @@ __all__ = [
     "RiskEvaluationContext",
     "map_prediction_to_command",
     "map_explanation_to_command",
+    "compute_request_fingerprint",
+    "is_payload_equivalent",
+    "reconstruct_prediction_response",
 ]

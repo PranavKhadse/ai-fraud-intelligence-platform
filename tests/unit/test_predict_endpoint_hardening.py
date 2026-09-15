@@ -186,9 +186,11 @@ class TestEndpointExceptionHandling:
             detail="API Key Expired",
         )
         mock_persistence = MagicMock(spec=FraudPersistenceService)
+        mock_persistence.get_existing_evaluation = AsyncMock(return_value=None)
         mock_persistence.persist_evaluation = AsyncMock()
 
         req_payload = MagicMock(spec=TransactionPredictRequest)
+        req_payload.transaction_id = None
         http_req = make_mock_request()
 
         with pytest.raises(HTTPException) as exc_info:
@@ -211,6 +213,7 @@ class TestEndpointExceptionHandling:
         mock_risk_service.predict_transaction.return_value = mock_response
 
         mock_persistence = MagicMock(spec=FraudPersistenceService)
+        mock_persistence.get_existing_evaluation = AsyncMock(return_value=None)
         mock_persistence.persist_evaluation = AsyncMock()
 
         req_payload = MagicMock(spec=TransactionPredictRequest)

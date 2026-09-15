@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 import uuid
 
-from sqlalchemy import String, Numeric, Integer, DateTime, JSON, CheckConstraint, Index
+from sqlalchemy import String, Numeric, Integer, DateTime, JSON, CheckConstraint, Index, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -147,6 +147,13 @@ class Transaction(Base, UUIDPrimaryKeyMixin):
     __table_args__ = (
         CheckConstraint("amount >= 0.00", name="chk_transactions_amount_positive"),
         Index("ix_transactions_account_ts", "account_id", "transaction_timestamp"),
+        Index(
+            "uq_transactions_external_tx_id",
+            "external_transaction_id",
+            unique=True,
+            postgresql_where=text("external_transaction_id IS NOT NULL"),
+            sqlite_where=text("external_transaction_id IS NOT NULL"),
+        ),
     )
 
     def __repr__(self) -> str:

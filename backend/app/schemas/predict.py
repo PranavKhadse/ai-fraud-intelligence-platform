@@ -63,8 +63,9 @@ class TransactionPredictRequest(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     # Optional metadata
-    transaction_id: Optional[str] = Field(None, description="Optional external transaction identifier")
-    account_id: Optional[str] = Field(None, description="Optional account / cardholder identifier")
+    transaction_id: Optional[str] = Field(None, max_length=128, description="Optional external transaction identifier")
+    account_id: Optional[str] = Field(None, max_length=128, description="Optional account / cardholder identifier")
+    merchant_id: Optional[str] = Field(None, max_length=128, description="Optional merchant identifier")
     timestamp: Optional[str] = Field(None, description="Optional raw transaction timestamp")
 
     # Canonical Numeric Predictors (6 features)
