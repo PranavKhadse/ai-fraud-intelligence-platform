@@ -1,0 +1,514 @@
+{
+  "metadata": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "os_name": "Windows",
+    "os_release": "10",
+    "architecture": "AMD64",
+    "processor": "AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD",
+    "cpu_cores_logical": 16,
+    "python_version": "3.11.7",
+    "python_compiler": "MSC v.1937 64 bit (AMD64)",
+    "python_implementation": "CPython"
+  },
+  "benchmark_config": {
+    "num_requests": 200,
+    "concurrency_levels": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "warmup_requests": 50,
+    "dataset_path": "D:\\Users\\Pranav Khadse\\Downloads\\VIT\\Coding\\AI-Powered Fraud Detection & Risk Intelligence Platform\\data\\processed\\features\\test_features.parquet",
+    "target_rate": null,
+    "include_persistence": true,
+    "random_seed": 42
+  },
+  "suite_results": {
+    "suite_id": "suite_2f9f42d1",
+    "timestamp_utc": "2026-09-17T16:23:43.597703+00:00",
+    "cold_start_latency_ms": 428.259,
+    "warmup_requests_executed": 50,
+    "warmup_latency": {
+      "count": 50,
+      "min_ms": 37.0796,
+      "mean_ms": 47.453488,
+      "median_ms": 47.1583,
+      "max_ms": 69.2952,
+      "std_ms": 5.465873,
+      "iqr_ms": 2.80255,
+      "p50_ms": 47.1583,
+      "p90_ms": 52.24782,
+      "p95_ms": 55.569085,
+      "p99_ms": 64.271769,
+      "p99_9_ms": 68.792857
+    },
+    "concurrency_sweep": {
+      "baseline_concurrency": 1,
+      "baseline_tps": 20.51,
+      "peak_tps": 26.49,
+      "peak_concurrency": 4,
+      "scaling_ratios": {
+        "1": 1.0,
+        "2": 1.189,
+        "4": 1.292,
+        "8": 1.206,
+        "16": 1.209
+      },
+      "scaling_efficiencies": {
+        "1": 100.0,
+        "2": 59.46,
+        "4": 32.29,
+        "8": 15.08,
+        "16": 7.56
+      },
+      "concurrency_results": {
+        "1": {
+          "benchmark_id": "run_1c_200r_01558d",
+          "mode": "In-process ASGI",
+          "concurrency": 1,
+          "total_requests": 200,
+          "successful_requests": 200,
+          "failed_requests": 0,
+          "elapsed_seconds": 9.753,
+          "throughput": {
+            "total_requests": 200,
+            "successful_requests": 200,
+            "failed_requests": 0,
+            "elapsed_seconds": 9.753,
+            "offered_tps": 20.51,
+            "completed_tps": 20.51,
+            "successful_tps": 20.51,
+            "error_rate_percent": 0.0
+          },
+          "latency": {
+            "count": 200,
+            "min_ms": 36.698,
+            "mean_ms": 48.686606,
+            "median_ms": 46.96495,
+            "max_ms": 374.9532,
+            "std_ms": 23.774169,
+            "iqr_ms": 5.725725,
+            "p50_ms": 46.96495,
+            "p90_ms": 54.50817,
+            "p95_ms": 55.7234,
+            "p99_ms": 59.70696,
+            "p99_9_ms": 312.309035
+          },
+          "status_code_counts": {
+            "200": 200
+          },
+          "error_counts": {},
+          "sla_compliance": {
+            "sla_name": "Standard Payment Gateway Reference Target",
+            "overall_compliant": false,
+            "p50_compliant": false,
+            "p95_compliant": false,
+            "p99_compliant": true,
+            "target_thresholds": {
+              "target_p50_ms": 15.0,
+              "target_p95_ms": 35.0,
+              "target_p99_ms": 60.0
+            },
+            "distribution_compliance_pct": {
+              "under_15ms": 0.0,
+              "under_25ms": 0.0,
+              "under_50ms": 74.5,
+              "under_100ms": 99.5
+            }
+          }
+        },
+        "2": {
+          "benchmark_id": "run_2c_200r_81773f",
+          "mode": "In-process ASGI",
+          "concurrency": 2,
+          "total_requests": 200,
+          "successful_requests": 200,
+          "failed_requests": 0,
+          "elapsed_seconds": 8.2012,
+          "throughput": {
+            "total_requests": 200,
+            "successful_requests": 200,
+            "failed_requests": 0,
+            "elapsed_seconds": 8.2012,
+            "offered_tps": 24.39,
+            "completed_tps": 24.39,
+            "successful_tps": 24.39,
+            "error_rate_percent": 0.0
+          },
+          "latency": {
+            "count": 200,
+            "min_ms": 46.2516,
+            "mean_ms": 81.84919,
+            "median_ms": 77.65575,
+            "max_ms": 408.457,
+            "std_ms": 26.326893,
+            "iqr_ms": 7.3361,
+            "p50_ms": 77.65575,
+            "p90_ms": 90.85422,
+            "p95_ms": 102.55138,
+            "p99_ms": 147.099012,
+            "p99_9_ms": 356.677499
+          },
+          "status_code_counts": {
+            "200": 200
+          },
+          "error_counts": {},
+          "sla_compliance": {
+            "sla_name": "Standard Payment Gateway Reference Target",
+            "overall_compliant": false,
+            "p50_compliant": false,
+            "p95_compliant": false,
+            "p99_compliant": false,
+            "target_thresholds": {
+              "target_p50_ms": 15.0,
+              "target_p95_ms": 35.0,
+              "target_p99_ms": 60.0
+            },
+            "distribution_compliance_pct": {
+              "under_15ms": 0.0,
+              "under_25ms": 0.0,
+              "under_50ms": 1.5,
+              "under_100ms": 93.5
+            }
+          }
+        },
+        "4": {
+          "benchmark_id": "run_4c_200r_43e183",
+          "mode": "In-process ASGI",
+          "concurrency": 4,
+          "total_requests": 200,
+          "successful_requests": 200,
+          "failed_requests": 0,
+          "elapsed_seconds": 7.5497,
+          "throughput": {
+            "total_requests": 200,
+            "successful_requests": 200,
+            "failed_requests": 0,
+            "elapsed_seconds": 7.5497,
+            "offered_tps": 26.49,
+            "completed_tps": 26.49,
+            "successful_tps": 26.49,
+            "error_rate_percent": 0.0
+          },
+          "latency": {
+            "count": 200,
+            "min_ms": 72.3541,
+            "mean_ms": 148.478538,
+            "median_ms": 144.7814,
+            "max_ms": 506.3817,
+            "std_ms": 39.119728,
+            "iqr_ms": 10.936025,
+            "p50_ms": 144.7814,
+            "p90_ms": 156.05064,
+            "p95_ms": 171.785495,
+            "p99_ms": 212.32537,
+            "p99_9_ms": 505.922746
+          },
+          "status_code_counts": {
+            "200": 200
+          },
+          "error_counts": {},
+          "sla_compliance": {
+            "sla_name": "Standard Payment Gateway Reference Target",
+            "overall_compliant": false,
+            "p50_compliant": false,
+            "p95_compliant": false,
+            "p99_compliant": false,
+            "target_thresholds": {
+              "target_p50_ms": 15.0,
+              "target_p95_ms": 35.0,
+              "target_p99_ms": 60.0
+            },
+            "distribution_compliance_pct": {
+              "under_15ms": 0.0,
+              "under_25ms": 0.0,
+              "under_50ms": 0.0,
+              "under_100ms": 3.0
+            }
+          }
+        },
+        "8": {
+          "benchmark_id": "run_8c_200r_e10705",
+          "mode": "In-process ASGI",
+          "concurrency": 8,
+          "total_requests": 200,
+          "successful_requests": 200,
+          "failed_requests": 0,
+          "elapsed_seconds": 8.083,
+          "throughput": {
+            "total_requests": 200,
+            "successful_requests": 200,
+            "failed_requests": 0,
+            "elapsed_seconds": 8.083,
+            "offered_tps": 24.74,
+            "completed_tps": 24.74,
+            "successful_tps": 24.74,
+            "error_rate_percent": 0.0
+          },
+          "latency": {
+            "count": 200,
+            "min_ms": 126.4436,
+            "mean_ms": 311.840771,
+            "median_ms": 285.3196,
+            "max_ms": 718.0641,
+            "std_ms": 110.027151,
+            "iqr_ms": 81.043325,
+            "p50_ms": 285.3196,
+            "p90_ms": 370.02341,
+            "p95_ms": 660.082255,
+            "p99_ms": 707.403209,
+            "p99_9_ms": 716.370272
+          },
+          "status_code_counts": {
+            "200": 200
+          },
+          "error_counts": {},
+          "sla_compliance": {
+            "sla_name": "Standard Payment Gateway Reference Target",
+            "overall_compliant": false,
+            "p50_compliant": false,
+            "p95_compliant": false,
+            "p99_compliant": false,
+            "target_thresholds": {
+              "target_p50_ms": 15.0,
+              "target_p95_ms": 35.0,
+              "target_p99_ms": 60.0
+            },
+            "distribution_compliance_pct": {
+              "under_15ms": 0.0,
+              "under_25ms": 0.0,
+              "under_50ms": 0.0,
+              "under_100ms": 0.0
+            }
+          }
+        },
+        "16": {
+          "benchmark_id": "run_16c_200r_1edf75",
+          "mode": "In-process ASGI",
+          "concurrency": 16,
+          "total_requests": 200,
+          "successful_requests": 200,
+          "failed_requests": 0,
+          "elapsed_seconds": 8.0653,
+          "throughput": {
+            "total_requests": 200,
+            "successful_requests": 200,
+            "failed_requests": 0,
+            "elapsed_seconds": 8.0653,
+            "offered_tps": 24.8,
+            "completed_tps": 24.8,
+            "successful_tps": 24.8,
+            "error_rate_percent": 0.0
+          },
+          "latency": {
+            "count": 200,
+            "min_ms": 364.8691,
+            "mean_ms": 635.676613,
+            "median_ms": 575.5021,
+            "max_ms": 1296.3292,
+            "std_ms": 184.745696,
+            "iqr_ms": 63.418325,
+            "p50_ms": 575.5021,
+            "p90_ms": 919.87291,
+            "p95_ms": 949.79716,
+            "p99_ms": 1281.986667,
+            "p99_9_ms": 1294.187562
+          },
+          "status_code_counts": {
+            "200": 200
+          },
+          "error_counts": {},
+          "sla_compliance": {
+            "sla_name": "Standard Payment Gateway Reference Target",
+            "overall_compliant": false,
+            "p50_compliant": false,
+            "p95_compliant": false,
+            "p99_compliant": false,
+            "target_thresholds": {
+              "target_p50_ms": 15.0,
+              "target_p95_ms": 35.0,
+              "target_p99_ms": 60.0
+            },
+            "distribution_compliance_pct": {
+              "under_15ms": 0.0,
+              "under_25ms": 0.0,
+              "under_50ms": 0.0,
+              "under_100ms": 0.0
+            }
+          }
+        }
+      }
+    },
+    "ablation": {
+      "mode_a_full_api": {
+        "count": 100,
+        "min_ms": 36.7744,
+        "mean_ms": 45.48307,
+        "median_ms": 46.08365,
+        "max_ms": 69.7203,
+        "std_ms": 5.786392,
+        "iqr_ms": 8.00135,
+        "p50_ms": 46.08365,
+        "p90_ms": 52.37731,
+        "p95_ms": 54.19245,
+        "p99_ms": 60.058791,
+        "p99_9_ms": 68.754149
+      },
+      "mode_b_in_memory": {
+        "count": 100,
+        "min_ms": 22.0538,
+        "mean_ms": 23.680746,
+        "median_ms": 23.2739,
+        "max_ms": 29.8001,
+        "std_ms": 1.282913,
+        "iqr_ms": 1.714525,
+        "p50_ms": 23.2739,
+        "p90_ms": 25.29711,
+        "p95_ms": 25.800095,
+        "p99_ms": 26.820695,
+        "p99_9_ms": 29.50216
+      },
+      "mode_c_idempotent_replay": {
+        "count": 100,
+        "min_ms": 12.6835,
+        "mean_ms": 15.992467,
+        "median_ms": 14.5462,
+        "max_ms": 27.0073,
+        "std_ms": 3.563138,
+        "iqr_ms": 2.463725,
+        "p50_ms": 14.5462,
+        "p90_ms": 22.16167,
+        "p95_ms": 25.24298,
+        "p99_ms": 26.297668,
+        "p99_9_ms": 26.936337
+      },
+      "persistence_overhead_ms": 21.802,
+      "persistence_overhead_pct": 47.94,
+      "replay_speedup_factor": 2.84,
+      "replay_latency_reduction_pct": 64.84
+    },
+    "bottleneck_analysis": {
+      "component_breakdown": {
+        "total_component_mean_ms": 24.3051,
+        "stages": {
+          "request_validation": {
+            "metrics": {
+              "count": 50,
+              "min_ms": 0.0421,
+              "mean_ms": 0.053614,
+              "median_ms": 0.0446,
+              "max_ms": 0.3368,
+              "std_ms": 0.041576,
+              "iqr_ms": 0.0045,
+              "p50_ms": 0.0446,
+              "p90_ms": 0.05928,
+              "p95_ms": 0.066645,
+              "p99_ms": 0.210625,
+              "p99_9_ms": 0.324183
+            },
+            "percentage_of_total": 0.22
+          },
+          "feature_preparation": {
+            "metrics": {
+              "count": 50,
+              "min_ms": 5.7377,
+              "mean_ms": 6.802636,
+              "median_ms": 6.614,
+              "max_ms": 9.0403,
+              "std_ms": 0.934665,
+              "iqr_ms": 1.321775,
+              "p50_ms": 6.614,
+              "p90_ms": 8.3501,
+              "p95_ms": 8.50277,
+              "p99_ms": 9.020014,
+              "p99_9_ms": 9.038271
+            },
+            "percentage_of_total": 27.99
+          },
+          "ml_inference": {
+            "metrics": {
+              "count": 50,
+              "min_ms": 0.479,
+              "mean_ms": 0.660632,
+              "median_ms": 0.6569,
+              "max_ms": 0.9113,
+              "std_ms": 0.124252,
+              "iqr_ms": 0.2336,
+              "p50_ms": 0.6569,
+              "p90_ms": 0.81945,
+              "p95_ms": 0.880115,
+              "p99_ms": 0.90836,
+              "p99_9_ms": 0.911006
+            },
+            "percentage_of_total": 2.72
+          },
+          "treeshap_explainability": {
+            "metrics": {
+              "count": 50,
+              "min_ms": 8.924,
+              "mean_ms": 10.062862,
+              "median_ms": 9.9379,
+              "max_ms": 12.553,
+              "std_ms": 0.72245,
+              "iqr_ms": 1.0166,
+              "p50_ms": 9.9379,
+              "p90_ms": 10.83179,
+              "p95_ms": 11.21401,
+              "p99_ms": 11.956278,
+              "p99_9_ms": 12.493328
+            },
+            "percentage_of_total": 41.4
+          },
+          "rule_engine_policy": {
+            "metrics": {
+              "count": 50,
+              "min_ms": 5.6855,
+              "mean_ms": 6.330132,
+              "median_ms": 6.1875,
+              "max_ms": 8.4568,
+              "std_ms": 0.608106,
+              "iqr_ms": 0.791625,
+              "p50_ms": 6.1875,
+              "p90_ms": 7.08388,
+              "p95_ms": 7.51546,
+              "p99_ms": 8.134184,
+              "p99_9_ms": 8.424538
+            },
+            "percentage_of_total": 26.04
+          },
+          "persistence_mapping": {
+            "metrics": {
+              "count": 50,
+              "min_ms": 0.3542,
+              "mean_ms": 0.395196,
+              "median_ms": 0.36795,
+              "max_ms": 0.6495,
+              "std_ms": 0.060968,
+              "iqr_ms": 0.032475,
+              "p50_ms": 0.36795,
+              "p90_ms": 0.48798,
+              "p95_ms": 0.522455,
+              "p99_ms": 0.595992,
+              "p99_9_ms": 0.644149
+            },
+            "percentage_of_total": 1.63
+          }
+        }
+      },
+      "primary_bottleneck": {
+        "stage": "PipelineStage.TREESHAP_EXPLAINABILITY",
+        "mean_ms": 10.063,
+        "contribution_pct": 41.4
+      },
+      "secondary_bottleneck": {
+        "stage": "PipelineStage.FEATURE_PREPARATION",
+        "mean_ms": 6.803,
+        "contribution_pct": 27.99
+      },
+      "diagnostic_summary": "Primary latency bottleneck is 'PipelineStage.TREESHAP_EXPLAINABILITY' contributing 41.4% (10.063 ms mean). Secondary constraint is 'PipelineStage.FEATURE_PREPARATION' contributing 28.0% (6.803 ms mean)."
+    },
+    "target_sla_name": "Standard Payment Gateway Reference Target"
+  }
+}
