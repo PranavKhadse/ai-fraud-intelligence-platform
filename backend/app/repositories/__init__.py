@@ -14,6 +14,7 @@ Exports:
 """
 
 from backend.app.repositories.audit_log_repository import AuditLogRepository
+from backend.app.repositories.dashboard_repository import DashboardRepository
 from backend.app.repositories.exceptions import (
     PersistenceConflictError,
     PersistenceError,
@@ -35,6 +36,7 @@ from backend.app.repositories.rule_match_repository import (
 from backend.app.repositories.transaction_repository import TransactionRepository
 
 __all__ = [
+    "DashboardRepository",
     "TransactionRepository",
     "RiskEvaluationRepository",
     "RuleMatchRepository",
@@ -48,3 +50,4 @@ __all__ = [
     "PersistenceConflictError",
     "PersistenceNotFoundError",
 ]
+

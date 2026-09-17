@@ -121,8 +121,8 @@ The platform integrates a local explainability framework designed to support ana
 | **Phase 7** | **Explainability & Reason Codes** | 🟢 **Completed** | Native TreeSHAP feature attributions, margin waterfall reconstruction, rule & model reason codes, decision override transparency. |
 | **Phase 8** | **Fraud Detection API (FastAPI)** | 🟢 **Completed** | Production REST API (`/health`, `/predict`, `/api/v1/health`, `/api/v1/predict`), Pydantic v2 schemas, lifespan model pre-warming. |
 | **Phase 9** | **Database & Persistence (PostgreSQL)** | 🟢 **Completed** | PostgreSQL schema modeling, Alembic migrations, Repositories, Unit of Work, inline API persistence, idempotency & duplicate-request protection. |
-| **Phase 10** | **Real-Time Detection & Benchmarking** | ⚪ *Upcoming* | End-to-end transaction scoring pipeline, latency profiling & throughput benchmarking. |
-| **Phase 11** | **Fraud Intelligence Dashboard** | ⚪ *Upcoming* | React + TypeScript web app, real-time alerts feed, risk distribution charts, audit views. |
+| **Phase 10** | **Real-Time Detection & Benchmarking** | 🟢 **Completed** | End-to-end transaction scoring pipeline, 7-stage latency profiling, multi-tier persistence ablation, benchmark CLI. |
+| **Phase 11** | **Fraud Intelligence Dashboard** | 🟢 **Completed** | React 18 + TypeScript SPA, near-real-time live feed, deep investigation drawer, trend analytics, TreeSHAP waterfall, read-only What-If counterfactual simulator. |
 | **Phase 12** | **Human Review & Case Management** | ⚪ *Upcoming* | Analyst review queue, manual confirmation/dismissal workflow, feedback capture. |
 | **Phase 13** | **ML & Model Monitoring** | ⚪ *Upcoming* | Data drift, concept drift, feature distribution shift detection, statistical alerts. |
 | **Phase 14** | **MLOps, Retraining & Versioning** | ⚪ *Upcoming* | Automated retraining triggers, model registry, champion/challenger shadow evaluation. |
@@ -303,6 +303,35 @@ python scripts/benchmark.py --requests 50 --concurrency 1,2,4 --output docs/benc
 
 # HTTP network mode against a live running server
 python scripts/benchmark.py --transport http --target-url http://127.0.0.1:8000 --requests 200
+```
+
+---
+
+## 🖥️ Fraud Intelligence Dashboard & What-If Simulator (Phase 11)
+
+The platform includes an interactive fraud intelligence dashboard built with React 18, TypeScript, and Vite under `frontend/`:
+
+- **Near-Real-Time Live Transaction Feed**: Sub-second polling (5s/10s/30s/off) with live risk tier indicators, customer/merchant search, and pagination.
+- **Deep Investigation Drawer**: Detailed inspection of 55-feature snapshots, persisted TreeSHAP attributions, rule matches, plain-English reason codes, and audit logs.
+- **Explainability & Trend Analytics**: 10-bucket risk score distributions ($0\text{--}9 \dots 90\text{--}100$), volume trends, and mathematical TreeSHAP margin waterfall visualizations.
+- **What-If Counterfactual Transaction Simulator**:
+  - In-memory execution using production `RiskEvaluator` and `RuleEngine`.
+  - Full 55-feature category editor across 7 domain categories.
+  - Side-by-side risk/model score comparison ($\Delta\text{Score}$), tier changes, and decision transitions.
+  - Deduplicated rule impact diffs (`NEWLY_TRIGGERED`, `RESOLVED`, `PERSISTENT`, `NEITHER`).
+  - Strict **Zero-Write Guarantee**: no database writes, no audit logs, zero state mutation.
+
+### Running the Frontend Locally:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### Building the Production Bundle:
+```bash
+cd frontend
+npm run build
 ```
 
 ---

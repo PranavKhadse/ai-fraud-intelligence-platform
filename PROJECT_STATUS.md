@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md — Project Tracking & Status Dashboard
 
 > **Platform:** AI-Powered Fraud Detection & Risk Intelligence Platform
-> **Last Updated:** Current Date (Phase 9 Implementation Completed)
-> **Current Active Phase:** **Phase 9 — Database & Persistence (PostgreSQL) (Completed)**
+> **Last Updated:** Current Date (Phase 11 Implementation Completed)
+> **Current Active Phase:** **Phase 11 — Fraud Intelligence Dashboard & What-If Simulator (Completed)**
 
 ---
 
@@ -20,8 +20,8 @@
 | **Phase 7** | **Explainability & Reason Codes** | 🟢 **Completed** | Milestone 7 |
 | **Phase 8** | **Fraud Detection API (FastAPI)** | 🟢 **Completed** | Milestone 8 |
 | **Phase 9** | **Database & Persistence (PostgreSQL)** | 🟢 **Completed** | Milestone 9 |
-| **Phase 10** | **Real-Time Detection & Benchmarking** | 🟢 **Completed** | Milestone 10 (Current) |
-| **Phase 11** | **Fraud Intelligence Dashboard** | ⚪ Pending | Phase 11 |
+| **Phase 10** | **Real-Time Detection & Benchmarking** | 🟢 **Completed** | Milestone 10 |
+| **Phase 11** | **Fraud Intelligence Dashboard** | 🟢 **Completed** | Milestone 11 |
 | **Phase 12** | **Human Review & Case Management** | ⚪ Pending | Phase 12 |
 | **Phase 13** | **ML & Model Monitoring** | ⚪ Pending | Phase 13 |
 | **Phase 14** | **MLOps, Retraining & Model Registry** | ⚪ Pending | Phase 14 |
@@ -209,6 +209,31 @@
 
 ---
 
+## ✅ Phase 11 Deliverable Checklist (Fraud Intelligence Dashboard & What-If Simulator)
+
+- [x] **Increment 11.1: Dashboard Foundation & UI Scaffolding**:
+  - Initialized modular React 18 + TypeScript + Vite frontend under `frontend/` with structured layout, clean routing, and production build tooling.
+  - Implemented sleek dark-mode design system with curated CSS custom properties (`#0B0F19` canvas, `#111827` cards, cyan/emerald/amber/rose risk badges, smooth animations).
+  - Built backend high-level overview endpoint `GET /api/v1/dashboard/overview` providing 24h summary metrics (total count, approval/review/block rates, average risk score, fraud loss avoided).
+- [x] **Increment 11.2: Near-Real-Time Risk Intelligence & Live Transaction Feed**:
+  - Implemented `GET /api/v1/dashboard/feed` supporting pagination, search, risk tier filtering (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), sorting, and time window parameters.
+  - Created interactive `LiveTransactionFeed` with auto-polling toggle (5s / 10s / 30s / off) and visual near-real-time indicator.
+- [x] **Increment 11.3: Transaction Investigation & Deep Inspection**:
+  - Implemented `GET /api/v1/dashboard/transactions/{tx_id}` in `DashboardRepository` delivering transaction metadata, persisted risk evaluations, 55-feature snapshots, TreeSHAP attributions, rule matches, plain-English reason codes, and audit trails.
+  - Built slide-over `TransactionDrawer` with formatted currency, location travel speeds, risk score meters, feature category cards, and complete audit history.
+- [x] **Increment 11.4: Explainability Visualizer & Trend Analytics**:
+  - Implemented `GET /api/v1/dashboard/analytics` delivering 10-bucket risk score histograms ($0\text{--}9, \dots, 90\text{--}100$ with boundary 100 handling), hourly/daily volume trends, and top-triggered rules.
+  - Built interactive `AnalyticsView` and `ShapWaterfall` chart faithfully visualizing base log-odds margin ($\phi_0 \approx 0.2437$), individual feature attributions, residual delta, and final model score.
+- [x] **Increment 11.5: What-If Transaction Simulator, Hardening, Testing & Documentation**:
+  - Created `POST /api/v1/dashboard/simulate` executing entirely in-memory using production `RiskEvaluator` and `RuleEngine` with zero persistence calls (`FraudPersistenceService` isolated).
+  - Built 55-feature counterfactual editor grouped across 7 domain categories with live modified badges, category resets, and preset scenarios.
+  - Implemented side-by-side comparison summary card ($\Delta\text{Risk Score}$, $\Delta\text{Model Score}$, tier changes, action changes) and deduplicated rule impact analysis (`NEWLY_TRIGGERED`, `RESOLVED`, `PERSISTENT`, `NEITHER`).
+  - Added seamless "Simulate in What-If" action from `TransactionDrawer` pre-populating baseline transaction snapshot.
+  - Added 23 dedicated Phase 11.5 backend tests (schema validations, NaN/Infinity rejections, boundary checks, zero-write invariant tests, baseline immutability); achieved **819 / 819 passing tests** with 0 regressions.
+  - Authored comprehensive documentation in `docs/phase_11_fraud_intelligence_dashboard_report.md`.
+
+---
+
 ## 🏛 Architectural Decision Records (ADRs)
 
 ### ADR-001: Modular Monorepo Scaffolding
@@ -254,9 +279,12 @@
 - **Status**: Accepted (Phase 9).
 
 ### ADR-015: Empirical High-Resolution Latency Profiling & Multi-Tier Benchmark Architecture
-- **Context**: Accurate performance evaluation requires isolating disk I/O, cold-start compilation, and network framing from actual algorithmic inference and database persistence latency without metric fabrication.
-- **Decision**: Architect a multi-scenario benchmarking suite (`BenchmarkSuite`, `BenchmarkRunner`, `PipelineProfiler`) utilizing nanosecond monotonic clocks (`time.perf_counter_ns`), in-memory dataset caching, unmeasured warm-up priming, and bounded async concurrency (`asyncio.Semaphore`). Decompose latency into 7 isolated stages, evaluate multi-tier persistence ablation, and benchmark idempotent replay acceleration.
 - **Status**: Accepted (Phase 10).
+
+### ADR-016: Read-Only What-If Simulation Architecture & Zero-Write State Governance
+- **Context**: Fraud analysts require counterfactual simulation to evaluate how hypothetical feature alterations (e.g. higher velocity, altered location, abnormal amount) impact ML model scores, TreeSHAP attributions, and rule triggers without contaminating the production database or creating audit noise.
+- **Decision**: Design `POST /api/v1/dashboard/simulate` as an entirely in-memory evaluation pipeline reusing the singleton `RiskService`, `RiskEvaluator`, and `RuleEngine`. Enforce a strict zero-write guarantee: baseline queries are read-only (`DashboardRepository.get_transaction_detail`), `FraudPersistenceService` is never invoked, no `INSERT`/`UPDATE`/`DELETE` queries or audit logs are executed, and baseline entity states are verified immutable.
+- **Status**: Accepted (Phase 11).
 
 ---
 
@@ -268,13 +296,14 @@
 4. **Static Cost Assumptions**: Current threshold benchmarks assume fixed unit costs ($C_{\text{FP}}=\$15, C_{\text{FN}}=\$200, C_{\text{REV}}=\$5$). Dynamic amount-weighted scoring is recommended for future financial optimization.
 5. **Distributed Ambiguous Commit Outcome**: If network connectivity drops while awaiting PostgreSQL `COMMIT` acknowledgement, the outcome is inherently ambiguous across distributed nodes. The idempotency design safely handles both outcomes upon subsequent retry: if the transaction committed, the retry replays the result (`200 OK`); if the commit was rolled back by PostgreSQL, the retry performs clean evaluation and persistence.
 6. **Local Single-Node CPU Contention**: Synchronous TreeSHAP execution and PostgreSQL commits on a shared local host constrain peak throughput to ~26.5 TPS. Offloading persistence and TreeSHAP attributions to background asynchronous queues is recommended for high-volume (>1,000 TPS) deployments.
+7. **Near-Real-Time Feed Polling**: The Live Transaction Feed operates via configurable near-real-time client-side polling (5s/10s/30s) rather than WebSocket streaming. For high-volume (>5,000 TPS) streams, WebSocket or Server-Sent Events (SSE) should be evaluated.
 
 ---
 
-## ⏭ Next Step: Preparation for Phase 11 (Fraud Intelligence Dashboard)
+## ⏭ Next Step: Preparation for Phase 12 (Human Review & Case Management)
 
-When approved to start Phase 11:
-- Build the interactive web dashboard for real-time risk intelligence visualization.
-- Implement live transaction monitoring, risk score distribution widgets, and rule trigger charts.
-- Integrate human review case management and decision audit logs with backend API endpoints.
+When approved to start Phase 12:
+- Architect human review queue and analyst workflow management.
+- Implement case assignment, manual dispositioning (`CONFIRMED_FRAUD`, `FALSE_POSITIVE`, `DISMISSED`), and disposition history.
+- Capture analyst feedback for downstream active learning and retraining loops.
 
