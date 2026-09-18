@@ -9,6 +9,13 @@ Exports:
 - `TransactionData`, `RiskEvaluationData`, `RuleMatchData`, `ReasonCodeData`, `FeatureAttributionData`, `AuditLogData`: Component DTOs.
 """
 
+from backend.app.services.case_service import (
+    ActorContext,
+    CaseService,
+    CreateManualCaseCommand,
+    generate_case_number,
+    get_case_service,
+)
 from backend.app.services.persistence_service import (
     AuditLogData,
     FeatureAttributionData,
@@ -48,6 +55,11 @@ __all__ = [
     "UnitOfWork",
     "FraudPersistenceService",
     "get_persistence_service",
+    "CaseService",
+    "get_case_service",
+    "ActorContext",
+    "CreateManualCaseCommand",
+    "generate_case_number",
     "PersistRiskEvaluationCommand",
     "PersistedRiskEvaluationResult",
     "TransactionData",

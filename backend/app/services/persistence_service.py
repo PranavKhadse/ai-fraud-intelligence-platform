@@ -17,10 +17,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models.audit_log import AuditLog
+from backend.app.db.models.case import Case, CaseNote
 from backend.app.db.models.enums import (
     AttributionDirection,
     AuditActorType,
     AuditEntityType,
+    CaseNoteType,
+    CasePriority,
+    CaseStatus,
+    CaseTriggerSource,
     DecisionAction,
     PolicyMode,
     ReasonSeverity,
@@ -36,6 +41,7 @@ from backend.app.db.models.rule_match import EvaluationRuleMatch
 from backend.app.db.models.transaction import Transaction
 from backend.app.db.session import get_db_session
 from backend.app.repositories.exceptions import PersistenceConflictError, PersistenceError
+from backend.app.services.case_service import generate_case_number
 from backend.app.services.unit_of_work import FraudPersistenceUnitOfWork
 
 
@@ -190,6 +196,8 @@ class PersistedRiskEvaluationResult:
     feature_attributions_count: int
     audit_log_id: Optional[uuid.UUID]
     persisted_at: datetime
+    case_id: Optional[uuid.UUID] = None
+    case_number: Optional[str] = None
 
 
 # ==============================================================================
@@ -203,7 +211,7 @@ class FraudPersistenceService:
     Design Principles:
     - Dependency Injection: Operates strictly through an injected `FraudPersistenceUnitOfWork`.
     - Idempotency & Conflict Policy: Rejects duplicate external transaction IDs with `PersistenceConflictError`.
-    - Foreign-Key Safe Ordering: Stages entities in strict dependency order (Transaction -> Flush -> RiskEvaluation -> Flush -> Children -> AuditLog).
+    - Foreign-Key Safe Ordering: Stages entities in strict dependency order (Transaction -> Flush -> RiskEvaluation -> Flush -> Children -> Case -> AuditLog).
     - Single Commit: Commits exactly once via `uow.commit()` after all staging operations succeed.
     - Defensive Rollback: Automatically rolls back via `uow.rollback()` on any failure and propagates original exception.
     """
@@ -397,7 +405,81 @@ class FraudPersistenceService:
             if feature_attr_entities:
                 await self._uow.feature_attributions.add_many(feature_attr_entities)
 
-            # 9. Map and stage AuditLog record
+            # 9. Automated Case Creation (only for DecisionAction.REVIEW)
+            created_case_id: Optional[uuid.UUID] = None
+            created_case_number: Optional[str] = None
+            if decision_action == DecisionAction.REVIEW:
+                is_override = bool(
+                    command.evaluation.is_overridden
+                    or (command.evaluation.rule_action == RuleOutcome.REVIEW)
+                )
+                case_trigger = (
+                    CaseTriggerSource.AUTOMATED_RULE_OVERRIDE
+                    if is_override
+                    else CaseTriggerSource.AUTOMATED_REVIEW_POLICY
+                )
+                tier_priority_map = {
+                    RiskTier.CRITICAL: CasePriority.CRITICAL,
+                    RiskTier.HIGH: CasePriority.HIGH,
+                    RiskTier.MEDIUM: CasePriority.MEDIUM,
+                    RiskTier.LOW: CasePriority.LOW,
+                }
+                case_priority = tier_priority_map.get(risk_tier, CasePriority.MEDIUM)
+                created_case_id = uuid.uuid4()
+                created_case_number = generate_case_number(eval_timestamp)
+
+                auto_case_entity = Case(
+                    id=created_case_id,
+                    case_number=created_case_number,
+                    transaction_id=tx_entity.id,
+                    evaluation_id=eval_entity.id,
+                    status=CaseStatus.OPEN,
+                    priority=case_priority,
+                    trigger_source=case_trigger,
+                    opened_at=eval_timestamp,
+                )
+                await self._uow.cases.add(auto_case_entity)
+
+                # Stage initial automated system note
+                note_content = (
+                    f"Automated review case created for transaction with decision REVIEW. "
+                    f"Risk Score: {eval_entity.risk_score} ({risk_tier.value}). "
+                    f"Reason: {eval_entity.decision_reason or 'Risk score exceeded review threshold'}."
+                )
+                auto_system_note = CaseNote(
+                    id=uuid.uuid4(),
+                    case_id=created_case_id,
+                    author_id="SYSTEM",
+                    author_role=AuditActorType.SYSTEM,
+                    note_type=CaseNoteType.SYSTEM_AUDIT,
+                    content=note_content,
+                    created_at=eval_timestamp,
+                )
+                await self._uow.cases.add_note(auto_system_note)
+
+                # Stage CASE_CREATED audit event
+                case_audit_entity = AuditLog(
+                    id=uuid.uuid4(),
+                    event_type="CASE_CREATED",
+                    entity_type=AuditEntityType.CASE,
+                    entity_id=created_case_id,
+                    action="CREATE_CASE",
+                    actor_type=AuditActorType.SYSTEM,
+                    actor_id="system",
+                    correlation_id=command.evaluation.correlation_id,
+                    client_ip=command.audit.client_ip if command.audit else None,
+                    payload={
+                        "case_number": created_case_number,
+                        "transaction_id": str(tx_entity.id),
+                        "evaluation_id": str(eval_entity.id),
+                        "trigger_source": case_trigger.value,
+                        "priority": case_priority.value,
+                    },
+                    event_timestamp=eval_timestamp,
+                )
+                await self._uow.audit_logs.add(case_audit_entity)
+
+            # 10. Map and stage Evaluation AuditLog record
             audit_data = command.audit or AuditLogData(
                 correlation_id=command.evaluation.correlation_id,
             )
@@ -428,10 +510,10 @@ class FraudPersistenceService:
             )
             await self._uow.audit_logs.add(audit_entity)
 
-            # 10. Commit all staged entities in a single atomic transaction
+            # 11. Commit all staged entities in a single atomic transaction
             await self._uow.commit()
 
-            # 11. Return typed result
+            # 12. Return typed result
             return PersistedRiskEvaluationResult(
                 transaction_id=tx_entity.id,
                 evaluation_id=eval_entity.id,
@@ -443,6 +525,8 @@ class FraudPersistenceService:
                 feature_attributions_count=len(feature_attr_entities),
                 audit_log_id=audit_log_id,
                 persisted_at=datetime.now(timezone.utc),
+                case_id=created_case_id,
+                case_number=created_case_number,
             )
 
         except PersistenceConflictError:

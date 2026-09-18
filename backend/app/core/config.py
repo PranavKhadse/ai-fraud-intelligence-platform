@@ -50,6 +50,10 @@ class Settings(BaseSettings):
         default=False,
         description="Whether to trust X-Forwarded-For and X-Real-IP reverse proxy headers for client IP extraction.",
     )
+    ALLOW_DEV_ACTOR_HEADERS: bool = Field(
+        default=False,
+        description="Allow X-Actor-ID and X-Actor-Role headers in development/test environments.",
+    )
 
 
     # Risk Engine Configuration Defaults

@@ -30,12 +30,15 @@ import type {
 interface LiveTransactionFeedProps {
   onRefreshTriggered?: () => void;
   onSimulateTransaction?: (detail: TransactionDetailResponse) => void;
+  onOpenCase?: (caseId: string) => void;
 }
 
 export const LiveTransactionFeed: React.FC<LiveTransactionFeedProps> = ({
   onRefreshTriggered,
   onSimulateTransaction,
+  onOpenCase,
 }) => {
+
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
   const [decisionFilter, setDecisionFilter] = useState<DecisionAction | undefined>(undefined);
   const [tierFilter, setTierFilter] = useState<RiskTier | undefined>(undefined);
@@ -358,7 +361,9 @@ export const LiveTransactionFeed: React.FC<LiveTransactionFeedProps> = ({
         transactionId={selectedTransactionId}
         onClose={() => setSelectedTransactionId(null)}
         onSimulateTransaction={onSimulateTransaction}
+        onOpenCase={onOpenCase}
       />
     </section>
   );
 };
+

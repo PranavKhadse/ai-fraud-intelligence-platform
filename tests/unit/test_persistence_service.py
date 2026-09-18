@@ -83,6 +83,10 @@ def mock_uow():
     uow.audit_logs = MagicMock()
     uow.audit_logs.add = AsyncMock(side_effect=lambda entity: entity)
 
+    uow.cases = MagicMock()
+    uow.cases.add = AsyncMock(side_effect=lambda entity: entity)
+    uow.cases.add_note = AsyncMock(side_effect=lambda entity: entity)
+
     return uow
 
 
@@ -211,6 +215,8 @@ class TestFraudPersistenceServiceExecution:
         assert result.reason_codes_count == 1
         assert result.feature_attributions_count == 1
         assert isinstance(result.audit_log_id, uuid.UUID)
+        assert isinstance(result.case_id, uuid.UUID)
+        assert result.case_number is not None and result.case_number.startswith("CASE-")
 
         # 2. Duplicate check called
         mock_uow.transactions.exists_by_external_id.assert_awaited_once_with("TX_EXT_999")
@@ -221,7 +227,9 @@ class TestFraudPersistenceServiceExecution:
         mock_uow.rule_matches.add_many.assert_awaited_once()
         mock_uow.reason_codes.add_many.assert_awaited_once()
         mock_uow.feature_attributions.add_many.assert_awaited_once()
-        mock_uow.audit_logs.add.assert_awaited_once()
+        mock_uow.cases.add.assert_awaited_once()
+        mock_uow.cases.add_note.assert_awaited_once()
+        assert mock_uow.audit_logs.add.await_count == 2
 
         # 4. Flushes and single commit
         assert mock_uow.flush.await_count == 2
@@ -261,6 +269,12 @@ class TestFraudPersistenceServiceExecution:
         mock_uow.feature_attributions.add_many = AsyncMock(
             side_effect=lambda entities: call_log.append("attributions_add") or list(entities)
         )
+        mock_uow.cases.add = AsyncMock(
+            side_effect=lambda entity: call_log.append("case_add") or entity
+        )
+        mock_uow.cases.add_note = AsyncMock(
+            side_effect=lambda entity: call_log.append("case_note_add") or entity
+        )
         mock_uow.audit_logs.add = AsyncMock(
             side_effect=lambda entity: call_log.append("audit_add") or entity
         )
@@ -280,6 +294,9 @@ class TestFraudPersistenceServiceExecution:
             "rule_matches_add",
             "reason_codes_add",
             "attributions_add",
+            "case_add",
+            "case_note_add",
+            "audit_add",
             "audit_add",
             "commit",
         ]

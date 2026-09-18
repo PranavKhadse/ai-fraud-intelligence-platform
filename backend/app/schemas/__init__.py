@@ -10,6 +10,23 @@ from backend.app.schemas.predict import (
     RuleMatchResponse,
     FeatureAttributionResponse,
 )
+from backend.app.schemas.case import (
+    CreateCaseRequest,
+    CaseAssignmentRequest,
+    CaseStatusUpdateRequest,
+    CreateCaseNoteRequest,
+    CaseDispositionRequest,
+    CaseNoteItem,
+    CaseResponse,
+    CaseQueueItem,
+    CaseListResponse,
+    CaseSummaryResponse,
+    CaseTransactionContext,
+    CaseEvaluationContext,
+    CaseDetailResponse,
+    TimelineEventItem,
+    CaseTimelineResponse,
+)
 
 __all__ = [
     "HealthResponse",
@@ -18,4 +35,19 @@ __all__ = [
     "ReasonCodeResponse",
     "RuleMatchResponse",
     "FeatureAttributionResponse",
+    "CreateCaseRequest",
+    "CaseAssignmentRequest",
+    "CaseStatusUpdateRequest",
+    "CreateCaseNoteRequest",
+    "CaseDispositionRequest",
+    "CaseNoteItem",
+    "CaseResponse",
+    "CaseQueueItem",
+    "CaseListResponse",
+    "CaseSummaryResponse",
+    "CaseTransactionContext",
+    "CaseEvaluationContext",
+    "CaseDetailResponse",
+    "TimelineEventItem",
+    "CaseTimelineResponse",
 ]

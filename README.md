@@ -123,7 +123,7 @@ The platform integrates a local explainability framework designed to support ana
 | **Phase 9** | **Database & Persistence (PostgreSQL)** | 🟢 **Completed** | PostgreSQL schema modeling, Alembic migrations, Repositories, Unit of Work, inline API persistence, idempotency & duplicate-request protection. |
 | **Phase 10** | **Real-Time Detection & Benchmarking** | 🟢 **Completed** | End-to-end transaction scoring pipeline, 7-stage latency profiling, multi-tier persistence ablation, benchmark CLI. |
 | **Phase 11** | **Fraud Intelligence Dashboard** | 🟢 **Completed** | React 18 + TypeScript SPA, near-real-time live feed, deep investigation drawer, trend analytics, TreeSHAP waterfall, read-only What-If counterfactual simulator. |
-| **Phase 12** | **Human Review & Case Management** | ⚪ *Upcoming* | Analyst review queue, manual confirmation/dismissal workflow, feedback capture. |
+| **Phase 12** | **Human Review & Case Management** | 🟢 **Completed** | PostgreSQL case persistence, 10 REST endpoints, 5-state lifecycle with row locking, 3-column React workspace, E2E concurrency hardening, ground-truth ML data contracts. |
 | **Phase 13** | **ML & Model Monitoring** | ⚪ *Upcoming* | Data drift, concept drift, feature distribution shift detection, statistical alerts. |
 | **Phase 14** | **MLOps, Retraining & Versioning** | ⚪ *Upcoming* | Automated retraining triggers, model registry, champion/challenger shadow evaluation. |
 | **Phase 15** | **Security, Auth & Audit Logging** | ⚪ *Upcoming* | Role-Based Access Control (RBAC), JWT authentication, tamper-evident audit logs. |
@@ -336,20 +336,45 @@ npm run build
 
 ---
 
+## 🛡️ Human Review & Case Management Platform (Phase 12)
+
+The platform provides a comprehensive, concurrency-hardened Human Review & Case Management system bridging automated ML evaluation with expert fraud investigation:
+
+- **Automated Routing & Manual Escalation**:
+  - Automatically routes high-risk transactions (`decision_action="REVIEW"`) into `OPEN` cases during transaction persistence.
+  - Supports manual analyst/supervisor escalation with collision-safe case numbering `CASE-YYYYMMDD-XXXXXX` and database-level `UNIQUE(transaction_id)` duplicate enforcement.
+- **5-State Concurrency-Safe Lifecycle**:
+  - Formal state machine (`OPEN` $\to$ `IN_REVIEW` $\to$ `ESCALATED` $\to$ `RESOLVED` $\to$ `CLOSED`) with reversible dispute reopening.
+  - PostgreSQL row-level locks (`SELECT FOR UPDATE`) protect all mutations (claims, reassignments, status changes, dispositions) against race conditions with zero deadlock risk.
+- **10 REST API Endpoints (`/api/v1/cases`)**:
+  - Paginated review queue, 7 real-time KPI metrics, detailed investigation context, manual escalation, reviewer assignment, lifecycle status transitions, notes management, human disposition submission, and authoritative case audit timelines.
+- **Interactive React Investigation Workspace**:
+  - **Review Queue**: 7 KPI summary cards (Total Open, Unassigned, In Review, Escalated, Resolved Today, Resolved 24h, Critical Priority), multi-filter toolbar, and server-side sorting.
+  - **Case Investigation Workspace**: 3-column responsive layout displaying 55-feature snapshots, calibrated risk gauges, plain-English reason codes, triggered rules, embedded `ShapWaterfall` feature attributions, append-only notes composer, and chronological audit timelines.
+  - **Action Modals**: Dedicated modals for case creation, reviewer assignment, escalation, disposition, case closure, and case reopening.
+  - **Development Actor Context Switcher**: Role switcher (`ANALYST`, `ADMIN`, `API_CLIENT`) with strict production fail-closed security (`ALLOW_DEV_ACTOR_HEADERS=False` blocks header injection).
+- **Ground-Truth Data Contract Preservation**:
+  - Guarantees complete preservation of point-in-time feature snapshots (55 features), uncalibrated model scores, calibrated risk scores, and human review labels (`CONFIRMED_FRAUD`, `FALSE_POSITIVE`, `LEGITIMATE`, `SUSPICIOUS_RESOLVED`) for future Phase 14 retraining loops.
+
+---
+
 ## 🧪 Running Automated Tests
 
-Run the complete test suite across ML models, risk engine, database persistence, and benchmarking:
+Run the complete test suite across ML models, risk engine, database persistence, benchmarking, and case management:
 ```bash
 python -m pytest tests/ -q
 ```
 
 Run specific test modules:
 ```bash
-# Unit tests (schemas, health, repositories, benchmarking)
+# Unit tests (schemas, health, repositories, lifecycle, models)
 python -m pytest tests/unit/ -v
 
 # API & Persistence Integration tests
 python -m pytest tests/integration/ -v
+
+# Phase 12.5 End-to-End Lifecycle & Concurrency tests
+python -m pytest tests/integration/test_case_e2e_lifecycle.py -v
 
 # ML, Feature Engineering & Risk Engine tests
 python -m pytest tests/ml/ -v

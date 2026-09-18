@@ -39,8 +39,8 @@ from backend.app.db.models import (
 class TestDeclarativeMetadata:
     """Validates the SQLAlchemy DeclarativeBase and registered table schemas."""
 
-    def test_all_six_models_registered_in_metadata(self):
-        """Ensure exactly the six required models are in the declarative metadata."""
+    def test_all_models_registered_in_metadata(self):
+        """Ensure all required models are in the declarative metadata."""
         expected_tables = {
             "transactions",
             "risk_evaluations",
@@ -48,18 +48,23 @@ class TestDeclarativeMetadata:
             "evaluation_reason_codes",
             "evaluation_feature_attributions",
             "audit_logs",
+            "cases",
+            "case_notes",
         }
         registered_tables = set(Base.metadata.tables.keys())
         assert expected_tables.issubset(registered_tables)
-        assert "cases" not in registered_tables, "Case table must NOT be present in Milestone 9.2."
 
-    def test_no_case_model_defined(self):
-        """Explicitly verify that Case model is not present in models package."""
+    def test_case_models_defined_in_package(self):
+        """Explicitly verify that Case and CaseNote models and enums are present in models package."""
         import backend.app.db.models as models_pkg
 
-        assert not hasattr(models_pkg, "Case")
-        assert not hasattr(models_pkg, "CaseStatus")
-        assert not hasattr(models_pkg, "CasePriority")
+        assert hasattr(models_pkg, "Case")
+        assert hasattr(models_pkg, "CaseNote")
+        assert hasattr(models_pkg, "CaseStatus")
+        assert hasattr(models_pkg, "CasePriority")
+        assert hasattr(models_pkg, "CaseDisposition")
+        assert hasattr(models_pkg, "CaseTriggerSource")
+        assert hasattr(models_pkg, "CaseNoteType")
 
 
 class TestTransactionModel:

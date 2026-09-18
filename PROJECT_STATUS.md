@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md — Project Tracking & Status Dashboard
 
 > **Platform:** AI-Powered Fraud Detection & Risk Intelligence Platform
-> **Last Updated:** Current Date (Phase 11 Implementation Completed)
-> **Current Active Phase:** **Phase 11 — Fraud Intelligence Dashboard & What-If Simulator (Completed)**
+> **Last Updated:** Current Date (Phase 12 Implementation Completed)
+> **Current Active Phase:** **Phase 12 — Human Review & Case Management (Completed)**
 
 ---
 
@@ -22,7 +22,7 @@
 | **Phase 9** | **Database & Persistence (PostgreSQL)** | 🟢 **Completed** | Milestone 9 |
 | **Phase 10** | **Real-Time Detection & Benchmarking** | 🟢 **Completed** | Milestone 10 |
 | **Phase 11** | **Fraud Intelligence Dashboard** | 🟢 **Completed** | Milestone 11 |
-| **Phase 12** | **Human Review & Case Management** | ⚪ Pending | Phase 12 |
+| **Phase 12** | **Human Review & Case Management** | 🟢 **Completed** | Milestone 12 |
 | **Phase 13** | **ML & Model Monitoring** | ⚪ Pending | Phase 13 |
 | **Phase 14** | **MLOps, Retraining & Model Registry** | ⚪ Pending | Phase 14 |
 | **Phase 15** | **Security, Auth & Audit Logging** | ⚪ Pending | Phase 15 |
@@ -234,6 +234,35 @@
 
 ---
 
+## ✅ Phase 12 Deliverable Checklist (Human Review & Case Management)
+
+- [x] **Increment 12.1: Database Schema & Relational Foundation**:
+  - Designed normalized tables `cases` and `case_notes` with primary keys, foreign keys, and table-level `UNIQUE(transaction_id)` constraint enforcing strict 1-to-1 cardinality.
+  - Authored and applied Alembic migration `0003_add_cases_and_case_notes_tables.py`.
+  - Implemented typed SQLAlchemy 2.0 ORM models (`Case`, `CaseNote`) and enums (`CaseStatus`, `CasePriority`, `CaseDisposition`, `CaseTriggerSource`, `CaseNoteType`, `AuditEntityType.CASE`).
+  - Integrated `CaseRepository` into `FraudPersistenceUnitOfWork.cases`.
+- [x] **Increment 12.2: Case Creation Domain & Persistence Integration**:
+  - Built domain logic in `CaseService` for automated and manual case creation.
+  - Integrated automated `OPEN` case staging on `REVIEW` policy decisions inside `FraudPersistenceService.persist_evaluation()`.
+  - Implemented manual case escalation service with collision-safe case numbering `CASE-YYYYMMDD-XXXXXX` and concurrency-safe duplicate conflict handling.
+- [x] **Increment 12.3: Case Management REST API & Lifecycle State Machine**:
+  - Implemented 10 production REST API endpoints under `/api/v1/cases` (Queue, Summary KPIs, Workspace Detail, Manual Escalation, Reviewer Assignment, Lifecycle Status, Notes List, Append Note, Disposition, and Case Audit Timeline).
+  - Implemented role-based security dependency (`ActorContext`, `get_current_actor`, `require_role`) supporting `ANALYST`, `ADMIN`, `API_CLIENT`, and `SYSTEM` roles.
+  - Enforced PostgreSQL row-level locking (`SELECT FOR UPDATE`) across all state mutations (assignment, status transitions, disposition recording).
+  - Enforced mandatory rationale ($\ge 10$ non-whitespace characters) on status mutations and dispositions.
+- [x] **Increment 12.4: Review Queue & Case Investigation Workspace (React Frontend)**:
+  - Built React 18 + TypeScript Review Queue (`ReviewQueue.tsx`) featuring 7 KPI summary cards, multi-dimensional filters, server-side sorting, and pagination.
+  - Built 3-column Case Investigation Workspace (`CaseInvestigationWorkspace.tsx`) with 55-feature point-in-time snapshot, plain-English reason codes, triggered rule matches, direct `ShapWaterfall` reuse, append-only notes composer, and case audit timeline.
+  - Implemented reusable action modals (`CreateCaseModal`, `DispositionModal`, `AssignModal`, `EscalateModal`, `CloseModal`, `ReopenModal`).
+  - Added cross-linking from Phase 11 `LiveTransactionFeed` and `TransactionDrawer`.
+  - Built development Actor Context Switcher with production fail-closed security.
+- [x] **Increment 12.5: End-to-End Lifecycle Verification, Concurrency Hardening & Milestone Sign-Off**:
+  - Created exhaustive E2E integration test suite in `tests/integration/test_case_e2e_lifecycle.py` verifying full multi-turn flows, duplicate creation races, concurrent claims, concurrent dispositions, RBAC security matrix, and ground-truth data contracts.
+  - Authored comprehensive documentation in `docs/phase_12_case_management_report.md`.
+  - Expanded test suite to **912 total passing tests** with 100% pass rate.
+
+---
+
 ## 🏛 Architectural Decision Records (ADRs)
 
 ### ADR-001: Modular Monorepo Scaffolding
@@ -282,9 +311,18 @@
 - **Status**: Accepted (Phase 10).
 
 ### ADR-016: Read-Only What-If Simulation Architecture & Zero-Write State Governance
-- **Context**: Fraud analysts require counterfactual simulation to evaluate how hypothetical feature alterations (e.g. higher velocity, altered location, abnormal amount) impact ML model scores, TreeSHAP attributions, and rule triggers without contaminating the production database or creating audit noise.
-- **Decision**: Design `POST /api/v1/dashboard/simulate` as an entirely in-memory evaluation pipeline reusing the singleton `RiskService`, `RiskEvaluator`, and `RuleEngine`. Enforce a strict zero-write guarantee: baseline queries are read-only (`DashboardRepository.get_transaction_detail`), `FraudPersistenceService` is never invoked, no `INSERT`/`UPDATE`/`DELETE` queries or audit logs are executed, and baseline entity states are verified immutable.
 - **Status**: Accepted (Phase 11).
+
+### ADR-017: Human Review & Case Management Lifecycle Architecture
+- **Context**: Automated fraud detection models generate `REVIEW` tier decisions requiring expert human investigation, structured disposition recording, and tamper-proof audit trails.
+- **Decision**:
+  1. Enforce strict 1-to-1 cardinality between financial transactions and investigation cases via database constraint `UNIQUE(transaction_id)`.
+  2. Implement an explicit 5-state lifecycle state machine (`OPEN`, `IN_REVIEW`, `ESCALATED`, `RESOLVED`, `CLOSED`) with row-level locks (`SELECT FOR UPDATE`).
+  3. Decouple assignment actions (`CLAIM`, `ASSIGN`, `UNASSIGN`) from terminal states, ensuring assignment state machine integrity.
+  4. Require mandatory explanatory rationale ($\ge 10$ characters) for all lifecycle mutations and human review dispositions.
+  5. Isolate `AuditEntityType.CASE` events for authoritative case timeline reconstruction.
+  6. Persist immutable point-in-time feature snapshots and human dispositions to serve as ground-truth training datasets for Phase 14 retraining pipelines.
+- **Status**: Accepted (Phase 12).
 
 ---
 
@@ -300,10 +338,10 @@
 
 ---
 
-## ⏭ Next Step: Preparation for Phase 12 (Human Review & Case Management)
+## ⏭ Next Step: Preparation for Phase 13 (ML & Model Monitoring)
 
-When approved to start Phase 12:
-- Architect human review queue and analyst workflow management.
-- Implement case assignment, manual dispositioning (`CONFIRMED_FRAUD`, `FALSE_POSITIVE`, `DISMISSED`), and disposition history.
-- Capture analyst feedback for downstream active learning and retraining loops.
+When approved to start Phase 13:
+- Implement data and prediction drift detection (Population Stability Index / PSI, Wasserstein distance).
+- Establish performance degradation monitoring against baseline benchmarks.
+- Implement automated alerting and metric aggregation for operational risk governance.
 

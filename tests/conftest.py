@@ -116,6 +116,8 @@ async def db_session(pg_engine: Optional[AsyncEngine]) -> AsyncGenerator[AsyncSe
         await conn.execute(
             text(
                 "TRUNCATE TABLE "
+                "case_notes, "
+                "cases, "
                 "evaluation_feature_attributions, "
                 "evaluation_reason_codes, "
                 "evaluation_rule_matches, "
@@ -141,6 +143,8 @@ async def db_session(pg_engine: Optional[AsyncEngine]) -> AsyncGenerator[AsyncSe
         await conn.execute(
             text(
                 "TRUNCATE TABLE "
+                "case_notes, "
+                "cases, "
                 "evaluation_feature_attributions, "
                 "evaluation_reason_codes, "
                 "evaluation_rule_matches, "

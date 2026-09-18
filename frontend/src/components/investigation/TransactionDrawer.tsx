@@ -17,12 +17,14 @@ import {
   TrendingUp,
   TrendingDown,
   Scale,
+  Inbox,
 } from 'lucide-react';
 import { Badge } from '../common/Badge.tsx';
 import { RiskScoreMeter } from '../common/RiskScoreMeter.tsx';
 import { LoadingSpinner } from '../common/LoadingSpinner.tsx';
 import { ErrorBanner } from '../common/ErrorBanner.tsx';
 import { ShapWaterfall } from '../explainability/ShapWaterfall.tsx';
+import { CreateCaseModal } from '../cases/CreateCaseModal.tsx';
 import { fetchTransactionDetail } from '../../api/dashboardApi.ts';
 import type {
   DecisionAction,
@@ -37,7 +39,9 @@ interface TransactionDrawerProps {
   transactionId: string | null;
   onClose: () => void;
   onSimulateTransaction?: (detail: TransactionDetailResponse) => void;
+  onOpenCase?: (caseId: string) => void;
 }
+
 
 // 7 Feature Category Definition Mappings from Phase 3 Feature Engine
 const FEATURE_CATEGORY_MAP: Record<string, string[]> = {
@@ -108,10 +112,12 @@ export const TransactionDrawer: React.FC<TransactionDrawerProps> = ({
   transactionId,
   onClose,
   onSimulateTransaction,
+  onOpenCase,
 }) => {
   const [data, setData] = useState<TransactionDetailResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCreateCaseModalOpen, setIsCreateCaseModalOpen] = useState<boolean>(false);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     'Velocity & Frequency': true,
     'Spending & Monetary Volume': true,
@@ -313,6 +319,19 @@ export const TransactionDrawer: React.FC<TransactionDrawerProps> = ({
           </div>
 
           <div className="drawer-header-actions-group">
+            {data && onOpenCase && (
+              <button
+                type="button"
+                className="btn-simulate-drawer"
+                style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}
+                onClick={() => setIsCreateCaseModalOpen(true)}
+                title="Escalate transaction to Human Review Case"
+              >
+                <Inbox size={14} />
+                <span>Escalate to Case</span>
+              </button>
+            )}
+
             {data && onSimulateTransaction && (
               <button
                 type="button"
@@ -337,6 +356,7 @@ export const TransactionDrawer: React.FC<TransactionDrawerProps> = ({
               <X size={20} />
             </button>
           </div>
+
         </div>
 
         {/* Drawer Content Body */}
@@ -729,6 +749,30 @@ export const TransactionDrawer: React.FC<TransactionDrawerProps> = ({
           )}
         </div>
       </div>
+
+      {isCreateCaseModalOpen && transactionId && (
+        <CreateCaseModal
+          isOpen={isCreateCaseModalOpen}
+          onClose={() => setIsCreateCaseModalOpen(false)}
+          transactionId={transactionId}
+          evaluationId={data?.evaluation?.id || null}
+          onSuccess={(created) => {
+            setIsCreateCaseModalOpen(false);
+            onClose();
+            if (onOpenCase) {
+              onOpenCase(created.id);
+            }
+          }}
+          onOpenExistingCase={(existingId) => {
+            setIsCreateCaseModalOpen(false);
+            onClose();
+            if (onOpenCase) {
+              onOpenCase(existingId);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };
+

@@ -47,7 +47,7 @@ class TestAlembicConfiguration:
 class TestTargetMetadataIntegration:
     """Validates target_metadata synchronization with SQLAlchemy DeclarativeBase."""
 
-    def test_target_metadata_contains_exact_six_tables(self):
+    def test_target_metadata_contains_all_eight_tables(self):
         from backend.alembic.env import target_metadata
 
         assert target_metadata is Base.metadata
@@ -58,15 +58,11 @@ class TestTargetMetadataIntegration:
             "evaluation_reason_codes",
             "evaluation_feature_attributions",
             "audit_logs",
+            "cases",
+            "case_notes",
         }
         registered_tables = set(target_metadata.tables.keys())
         assert expected_tables == registered_tables, f"Mismatch in tables: {registered_tables ^ expected_tables}"
-
-    def test_case_table_excluded_from_metadata(self):
-        from backend.alembic.env import target_metadata
-
-        assert "cases" not in target_metadata.tables
-        assert "case_audit_logs" not in target_metadata.tables
 
 
 class TestInitialMigrationRevision:
@@ -101,6 +97,22 @@ class TestUniqueIndexMigrationRevision:
         assert callable(unique_migration.downgrade)
 
 
+class TestCaseMigrationRevision:
+    """Validates the 0003 cases and case_notes migration script structure."""
+
+    def test_cases_migration_file_exists(self):
+        migration_file = Path("backend/alembic/versions/0003_add_cases_and_case_notes_tables.py")
+        assert migration_file.exists()
+
+    def test_cases_migration_attributes(self):
+        cases_migration = importlib.import_module("backend.alembic.versions.0003_add_cases_and_case_notes_tables")
+
+        assert cases_migration.revision == "0003_add_cases_and_case_notes_tables"
+        assert cases_migration.down_revision == "0002_add_unique_index_external_tx_id"
+        assert callable(cases_migration.upgrade)
+        assert callable(cases_migration.downgrade)
+
+
 class TestOfflineSQLGeneration:
     """Validates offline SQL DDL generation without a live PostgreSQL database."""
 
@@ -114,17 +126,21 @@ class TestOfflineSQLGeneration:
         command.upgrade(cfg, "head", sql=True)
         return buffer.getvalue()
 
-    def test_all_six_tables_created_in_sql(self, generated_sql: str):
+    def test_all_eight_tables_created_in_sql(self, generated_sql: str):
         assert "CREATE TABLE transactions" in generated_sql
         assert "CREATE TABLE risk_evaluations" in generated_sql
         assert "CREATE TABLE evaluation_rule_matches" in generated_sql
         assert "CREATE TABLE evaluation_reason_codes" in generated_sql
         assert "CREATE TABLE evaluation_feature_attributions" in generated_sql
         assert "CREATE TABLE audit_logs" in generated_sql
+        assert "CREATE TABLE cases" in generated_sql
+        assert "CREATE TABLE case_notes" in generated_sql
 
-    def test_case_table_absent_from_sql(self, generated_sql: str):
-        assert "CREATE TABLE cases" not in generated_sql
-        assert "case_status" not in generated_sql.lower()
+    def test_cases_table_constraints_in_sql(self, generated_sql: str):
+        assert "chk_cases_disposition_state" in generated_sql
+        assert "chk_case_notes_content_non_empty" in generated_sql
+        assert "uq_cases_case_number" in generated_sql
+        assert "uq_cases_transaction_id" in generated_sql
 
     def test_foreign_key_deletion_rules_in_sql(self, generated_sql: str):
         # RiskEvaluation -> Transaction must be ON DELETE RESTRICT

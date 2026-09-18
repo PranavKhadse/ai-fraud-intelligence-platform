@@ -17,7 +17,10 @@ import { EmptyState } from './components/common/EmptyState.tsx';
 import { LiveTransactionFeed } from './components/overview/LiveTransactionFeed.tsx';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard.tsx';
 import { WhatIfSimulator } from './components/simulator/WhatIfSimulator.tsx';
+import { ReviewQueue, type QueueFiltersState } from './components/cases/ReviewQueue.tsx';
+import { CaseInvestigationWorkspace } from './components/cases/CaseInvestigationWorkspace.tsx';
 import { fetchDashboardOverview, fetchHealthStatus } from './api/dashboardApi.ts';
+import { fetchCaseSummary } from './api/caseApi.ts';
 import type {
   DashboardOverviewResponse,
   HealthResponse,
@@ -35,6 +38,22 @@ export const App: React.FC = () => {
   const [healthError, setHealthError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
+  // Case Management Navigation & Preserved State
+  const [caseView, setCaseView] = useState<'queue' | 'workspace'>('queue');
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [unassignedCount, setUnassignedCount] = useState<number | undefined>(undefined);
+  const [queueFilters, setQueueFilters] = useState<QueueFiltersState>({
+    status: undefined,
+    priority: undefined,
+    assigned_to: undefined,
+    risk_tier: undefined,
+    search_term: '',
+    sort_by: 'opened_at',
+    sort_order: 'desc',
+    limit: 20,
+    page: 1,
+  });
+
   const loadHealth = useCallback(async () => {
     setHealthLoading(true);
     setHealthError(null);
@@ -46,6 +65,15 @@ export const App: React.FC = () => {
       setHealthError(message);
     } finally {
       setHealthLoading(false);
+    }
+  }, []);
+
+  const loadSummaryCount = useCallback(async () => {
+    try {
+      const summary = await fetchCaseSummary();
+      setUnassignedCount(summary.unassigned_count);
+    } catch {
+      // Quietly handled in background
     }
   }, []);
 
@@ -67,17 +95,31 @@ export const App: React.FC = () => {
     setIsRefreshing(true);
     loadHealth();
     loadOverview();
-  }, [loadHealth, loadOverview]);
+    loadSummaryCount();
+  }, [loadHealth, loadOverview, loadSummaryCount]);
 
   useEffect(() => {
     loadHealth();
     loadOverview();
-  }, [loadHealth, loadOverview]);
+    loadSummaryCount();
+  }, [loadHealth, loadOverview, loadSummaryCount]);
 
   const handleSimulateTransaction = useCallback((detail: TransactionDetailResponse) => {
     setBaselineTransaction(detail);
     setActiveTab('simulator');
   }, []);
+
+  const handleOpenCase = useCallback((caseId: string) => {
+    setSelectedCaseId(caseId);
+    setCaseView('workspace');
+    setActiveTab('cases');
+  }, []);
+
+  const handleBackToQueue = useCallback(() => {
+    setCaseView('queue');
+    setSelectedCaseId(null);
+    loadSummaryCount();
+  }, [loadSummaryCount]);
 
   const formatCurrency = (val: number): string => {
     return new Intl.NumberFormat('en-US', {
@@ -95,13 +137,32 @@ export const App: React.FC = () => {
         healthLoading={healthLoading}
         healthError={healthError}
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        unassignedCaseCount={unassignedCount}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          if (tab === 'cases') {
+            loadSummaryCount();
+          }
+        }}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
       />
 
       <main className="dashboard-main">
-        {activeTab === 'simulator' ? (
+        {activeTab === 'cases' ? (
+          caseView === 'workspace' && selectedCaseId ? (
+            <CaseInvestigationWorkspace
+              caseId={selectedCaseId}
+              onBackToQueue={handleBackToQueue}
+            />
+          ) : (
+            <ReviewQueue
+              onSelectCase={handleOpenCase}
+              initialFilters={queueFilters}
+              onFiltersChange={setQueueFilters}
+            />
+          )
+        ) : activeTab === 'simulator' ? (
           <WhatIfSimulator
             initialBaselineTransaction={baselineTransaction}
             onClearBaseline={() => setBaselineTransaction(null)}
@@ -210,6 +271,7 @@ export const App: React.FC = () => {
                 <LiveTransactionFeed
                   onRefreshTriggered={loadOverview}
                   onSimulateTransaction={handleSimulateTransaction}
+                  onOpenCase={handleOpenCase}
                 />
               </>
             ) : null}
@@ -222,7 +284,7 @@ export const App: React.FC = () => {
           AI-Powered Fraud Detection &amp; Risk Intelligence Platform &copy; 2026
         </div>
         <div style={{ display: 'flex', gap: '1rem' }}>
-          <span className="footer-link">Phase 11.5 What-If Transaction Simulator</span>
+          <span className="footer-link">Phase 12 Human Review &amp; Case Management</span>
           <span>•</span>
           <span className="footer-link">Near-Real-Time Risk Intelligence</span>
         </div>
@@ -231,6 +293,6 @@ export const App: React.FC = () => {
   );
 };
 
-
 export default App;
+
 

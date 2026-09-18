@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from backend.app.db.models.rule_match import EvaluationRuleMatch
     from backend.app.db.models.reason_code import EvaluationReasonCode
     from backend.app.db.models.feature_attribution import EvaluationFeatureAttribution
+    from backend.app.db.models.case import Case
 
 
 class RiskEvaluation(Base, UUIDPrimaryKeyMixin):
@@ -185,6 +186,14 @@ class RiskEvaluation(Base, UUIDPrimaryKeyMixin):
         back_populates="evaluation",
         cascade="all, delete-orphan",
         lazy="selectin",
+    )
+    case: Mapped[Optional["Case"]] = relationship(
+        "Case",
+        back_populates="evaluation",
+        uselist=False,
+        cascade="save-update, merge",
+        passive_deletes=True,
+        doc="Human review case associated with this risk evaluation if opened.",
     )
 
     __table_args__ = (

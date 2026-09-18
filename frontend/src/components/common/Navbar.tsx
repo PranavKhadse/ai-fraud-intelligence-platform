@@ -1,15 +1,17 @@
 import React from 'react';
-import { ShieldCheck, RefreshCw, Activity, TrendingUp, Sliders } from 'lucide-react';
+import { ShieldCheck, RefreshCw, Activity, TrendingUp, Sliders, Inbox } from 'lucide-react';
 import { SystemStatusBadge } from './SystemStatusBadge.tsx';
+import { ActorContextSwitcher } from '../cases/ActorContextSwitcher.tsx';
 import type { HealthResponse } from '../../types/api.ts';
 
-export type DashboardTab = 'operations' | 'analytics' | 'simulator';
+export type DashboardTab = 'operations' | 'analytics' | 'simulator' | 'cases';
 
 interface NavbarProps {
   health: HealthResponse | null;
   healthLoading: boolean;
   healthError: string | null;
   activeTab?: DashboardTab;
+  unassignedCaseCount?: number;
   onTabChange?: (tab: DashboardTab) => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
@@ -20,6 +22,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   healthLoading,
   healthError,
   activeTab = 'operations',
+  unassignedCaseCount,
   onTabChange,
   onRefresh,
   isRefreshing,
@@ -50,6 +53,21 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
           <button
             type="button"
+            className={`nav-tab-btn ${activeTab === 'cases' ? 'active' : ''}`}
+            onClick={() => onTabChange('cases')}
+            aria-selected={activeTab === 'cases'}
+            role="tab"
+          >
+            <Inbox size={15} />
+            <span>Case Review</span>
+            {unassignedCaseCount !== undefined && unassignedCaseCount > 0 && (
+              <span className="nav-tab-counter-badge" title={`${unassignedCaseCount} unassigned cases`}>
+                {unassignedCaseCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
             className={`nav-tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
             onClick={() => onTabChange('analytics')}
             aria-selected={activeTab === 'analytics'}
@@ -72,6 +90,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       )}
 
       <div className="navbar-actions">
+        <ActorContextSwitcher />
         <SystemStatusBadge
           health={health}
           loading={healthLoading}
@@ -111,3 +130,4 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+

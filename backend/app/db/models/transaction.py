@@ -18,6 +18,7 @@ from backend.app.db.models.base import Base, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from backend.app.db.models.risk_evaluation import RiskEvaluation
+    from backend.app.db.models.case import Case
 
 
 class Transaction(Base, UUIDPrimaryKeyMixin):
@@ -142,6 +143,14 @@ class Transaction(Base, UUIDPrimaryKeyMixin):
         passive_deletes=True,
         lazy="selectin",
         doc="Risk evaluations performed against this transaction.",
+    )
+    case: Mapped[Optional["Case"]] = relationship(
+        "Case",
+        back_populates="transaction",
+        uselist=False,
+        cascade="save-update, merge",
+        passive_deletes=True,
+        doc="Human review case associated with this transaction if opened.",
     )
 
     __table_args__ = (

@@ -10,6 +10,7 @@ from typing import Optional, Type
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.repositories.audit_log_repository import AuditLogRepository
+from backend.app.repositories.case_repository import CaseRepository
 from backend.app.repositories.feature_attribution_repository import FeatureAttributionRepository
 from backend.app.repositories.reason_code_repository import ReasonCodeRepository
 from backend.app.repositories.risk_evaluation_repository import RiskEvaluationRepository
@@ -52,6 +53,7 @@ class FraudPersistenceUnitOfWork:
         self._reason_codes = ReasonCodeRepository(self._session)
         self._feature_attributions = FeatureAttributionRepository(self._session)
         self._audit_logs = AuditLogRepository(self._session)
+        self._cases = CaseRepository(self._session)
 
         # Context state tracking
         self._in_context: bool = False
@@ -90,6 +92,11 @@ class FraudPersistenceUnitOfWork:
     def audit_logs(self) -> AuditLogRepository:
         """AuditLog persistence repository."""
         return self._audit_logs
+
+    @property
+    def cases(self) -> CaseRepository:
+        """Case persistence repository."""
+        return self._cases
 
     @property
     def in_context(self) -> bool:

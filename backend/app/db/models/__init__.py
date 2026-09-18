@@ -16,6 +16,11 @@ from backend.app.db.models.enums import (
     ReasonSeverity,
     AuditActorType,
     AuditEntityType,
+    CaseStatus,
+    CasePriority,
+    CaseDisposition,
+    CaseTriggerSource,
+    CaseNoteType,
 )
 from backend.app.db.models.transaction import Transaction
 from backend.app.db.models.risk_evaluation import RiskEvaluation
@@ -23,6 +28,7 @@ from backend.app.db.models.rule_match import EvaluationRuleMatch
 from backend.app.db.models.reason_code import EvaluationReasonCode
 from backend.app.db.models.feature_attribution import EvaluationFeatureAttribution
 from backend.app.db.models.audit_log import AuditLog
+from backend.app.db.models.case import Case, CaseNote
 
 __all__ = [
     # Base and Mixins
@@ -40,6 +46,11 @@ __all__ = [
     "ReasonSeverity",
     "AuditActorType",
     "AuditEntityType",
+    "CaseStatus",
+    "CasePriority",
+    "CaseDisposition",
+    "CaseTriggerSource",
+    "CaseNoteType",
     # Models
     "Transaction",
     "RiskEvaluation",
@@ -47,4 +58,6 @@ __all__ = [
     "EvaluationReasonCode",
     "EvaluationFeatureAttribution",
     "AuditLog",
+    "Case",
+    "CaseNote",
 ]
