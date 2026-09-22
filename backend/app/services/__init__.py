@@ -47,6 +47,11 @@ from backend.app.services.unit_of_work import (
     UnitOfWork,
 )
 
+from backend.app.services.monitoring_service import (
+    MonitoringService,
+    get_monitoring_service,
+)
+
 __all__ = [
     "RiskService",
     "get_risk_service",
@@ -75,4 +80,6 @@ __all__ = [
     "compute_request_fingerprint",
     "is_payload_equivalent",
     "reconstruct_prediction_response",
+    "MonitoringService",
+    "get_monitoring_service",
 ]

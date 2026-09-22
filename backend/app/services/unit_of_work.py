@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.repositories.audit_log_repository import AuditLogRepository
 from backend.app.repositories.case_repository import CaseRepository
 from backend.app.repositories.feature_attribution_repository import FeatureAttributionRepository
+from backend.app.repositories.monitoring_repository import MonitoringRepository
 from backend.app.repositories.reason_code_repository import ReasonCodeRepository
 from backend.app.repositories.risk_evaluation_repository import RiskEvaluationRepository
 from backend.app.repositories.rule_match_repository import RuleMatchRepository
@@ -54,6 +55,7 @@ class FraudPersistenceUnitOfWork:
         self._feature_attributions = FeatureAttributionRepository(self._session)
         self._audit_logs = AuditLogRepository(self._session)
         self._cases = CaseRepository(self._session)
+        self._monitoring_snapshots = MonitoringRepository(self._session)
 
         # Context state tracking
         self._in_context: bool = False
@@ -97,6 +99,11 @@ class FraudPersistenceUnitOfWork:
     def cases(self) -> CaseRepository:
         """Case persistence repository."""
         return self._cases
+
+    @property
+    def monitoring_snapshots(self) -> MonitoringRepository:
+        """ModelMonitoringSnapshot persistence repository."""
+        return self._monitoring_snapshots
 
     @property
     def in_context(self) -> bool:

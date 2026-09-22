@@ -1,10 +1,10 @@
 import React from 'react';
-import { ShieldCheck, RefreshCw, Activity, TrendingUp, Sliders, Inbox } from 'lucide-react';
+import { ShieldCheck, RefreshCw, Activity, TrendingUp, Sliders, Inbox, Gauge } from 'lucide-react';
 import { SystemStatusBadge } from './SystemStatusBadge.tsx';
 import { ActorContextSwitcher } from '../cases/ActorContextSwitcher.tsx';
 import type { HealthResponse } from '../../types/api.ts';
 
-export type DashboardTab = 'operations' | 'analytics' | 'simulator' | 'cases';
+export type DashboardTab = 'operations' | 'analytics' | 'simulator' | 'cases' | 'monitoring';
 
 interface NavbarProps {
   health: HealthResponse | null;
@@ -12,6 +12,7 @@ interface NavbarProps {
   healthError: string | null;
   activeTab?: DashboardTab;
   unassignedCaseCount?: number;
+  activeAlertCount?: number;
   onTabChange?: (tab: DashboardTab) => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
@@ -23,6 +24,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   healthError,
   activeTab = 'operations',
   unassignedCaseCount,
+  activeAlertCount,
   onTabChange,
   onRefresh,
   isRefreshing,
@@ -85,6 +87,24 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Sliders size={15} />
             <span>What-If Simulator</span>
+          </button>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'monitoring' ? 'active' : ''}`}
+            onClick={() => onTabChange('monitoring')}
+            aria-selected={activeTab === 'monitoring'}
+            role="tab"
+          >
+            <Gauge size={15} />
+            <span>Model Monitoring</span>
+            {activeAlertCount !== undefined && activeAlertCount > 0 && (
+              <span
+                className="nav-tab-counter-badge nav-tab-alert-badge"
+                title={`${activeAlertCount} active monitoring alerts`}
+              >
+                {activeAlertCount}
+              </span>
+            )}
           </button>
         </nav>
       )}

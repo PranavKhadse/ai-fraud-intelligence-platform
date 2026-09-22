@@ -19,6 +19,7 @@ import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard.ts
 import { WhatIfSimulator } from './components/simulator/WhatIfSimulator.tsx';
 import { ReviewQueue, type QueueFiltersState } from './components/cases/ReviewQueue.tsx';
 import { CaseInvestigationWorkspace } from './components/cases/CaseInvestigationWorkspace.tsx';
+import { MonitoringDashboard } from './components/monitoring/MonitoringDashboard.tsx';
 import { fetchDashboardOverview, fetchHealthStatus } from './api/dashboardApi.ts';
 import { fetchCaseSummary } from './api/caseApi.ts';
 import type {
@@ -37,6 +38,7 @@ export const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [monitoringAlertCount, setMonitoringAlertCount] = useState<number | undefined>(undefined);
 
   // Case Management Navigation & Preserved State
   const [caseView, setCaseView] = useState<'queue' | 'workspace'>('queue');
@@ -138,6 +140,7 @@ export const App: React.FC = () => {
         healthError={healthError}
         activeTab={activeTab}
         unassignedCaseCount={unassignedCount}
+        activeAlertCount={monitoringAlertCount}
         onTabChange={(tab) => {
           setActiveTab(tab);
           if (tab === 'cases') {
@@ -149,7 +152,9 @@ export const App: React.FC = () => {
       />
 
       <main className="dashboard-main">
-        {activeTab === 'cases' ? (
+        {activeTab === 'monitoring' ? (
+          <MonitoringDashboard onAlertCountChange={setMonitoringAlertCount} />
+        ) : activeTab === 'cases' ? (
           caseView === 'workspace' && selectedCaseId ? (
             <CaseInvestigationWorkspace
               caseId={selectedCaseId}

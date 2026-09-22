@@ -1,0 +1,175 @@
+{
+  "action_proportions": {
+    "APPROVE": 0.988383,
+    "BLOCK": 0.005305,
+    "REVIEW": 0.006313
+  },
+  "created_at": "2026-09-22T12:08:33.993195+00:00",
+  "dataset_name": "val_features.parquet",
+  "dataset_row_count": 277859,
+  "is_overridden_rate": 0.0037,
+  "mean_model_score": 0.009483,
+  "mean_risk_score": 0.887634,
+  "model_score_bins": [
+    {
+      "bin_index": 0,
+      "count": 274159,
+      "lower_bound": 0.0,
+      "proportion": 0.986684,
+      "upper_bound": 0.1
+    },
+    {
+      "bin_index": 1,
+      "count": 987,
+      "lower_bound": 0.1,
+      "proportion": 0.003552,
+      "upper_bound": 0.2
+    },
+    {
+      "bin_index": 2,
+      "count": 384,
+      "lower_bound": 0.2,
+      "proportion": 0.001382,
+      "upper_bound": 0.3
+    },
+    {
+      "bin_index": 3,
+      "count": 248,
+      "lower_bound": 0.3,
+      "proportion": 0.000893,
+      "upper_bound": 0.4
+    },
+    {
+      "bin_index": 4,
+      "count": 190,
+      "lower_bound": 0.4,
+      "proportion": 0.000684,
+      "upper_bound": 0.5
+    },
+    {
+      "bin_index": 5,
+      "count": 141,
+      "lower_bound": 0.5,
+      "proportion": 0.000507,
+      "upper_bound": 0.6
+    },
+    {
+      "bin_index": 6,
+      "count": 154,
+      "lower_bound": 0.6,
+      "proportion": 0.000554,
+      "upper_bound": 0.7
+    },
+    {
+      "bin_index": 7,
+      "count": 157,
+      "lower_bound": 0.7,
+      "proportion": 0.000565,
+      "upper_bound": 0.8
+    },
+    {
+      "bin_index": 8,
+      "count": 184,
+      "lower_bound": 0.8,
+      "proportion": 0.000662,
+      "upper_bound": 0.9
+    },
+    {
+      "bin_index": 9,
+      "count": 1255,
+      "lower_bound": 0.9,
+      "proportion": 0.004517,
+      "upper_bound": 1.0
+    }
+  ],
+  "model_version": "1.0.0",
+  "risk_score_buckets": [
+    {
+      "bucket_index": 0,
+      "count": 274060,
+      "label": "0-9",
+      "lower_bound": 0,
+      "proportion": 0.986328,
+      "upper_bound": 9
+    },
+    {
+      "bucket_index": 1,
+      "count": 1052,
+      "label": "10-19",
+      "lower_bound": 10,
+      "proportion": 0.003786,
+      "upper_bound": 19
+    },
+    {
+      "bucket_index": 2,
+      "count": 395,
+      "label": "20-29",
+      "lower_bound": 20,
+      "proportion": 0.001422,
+      "upper_bound": 29
+    },
+    {
+      "bucket_index": 3,
+      "count": 261,
+      "label": "30-39",
+      "lower_bound": 30,
+      "proportion": 0.000939,
+      "upper_bound": 39
+    },
+    {
+      "bucket_index": 4,
+      "count": 190,
+      "label": "40-49",
+      "lower_bound": 40,
+      "proportion": 0.000684,
+      "upper_bound": 49
+    },
+    {
+      "bucket_index": 5,
+      "count": 146,
+      "label": "50-59",
+      "lower_bound": 50,
+      "proportion": 0.000525,
+      "upper_bound": 59
+    },
+    {
+      "bucket_index": 6,
+      "count": 156,
+      "label": "60-69",
+      "lower_bound": 60,
+      "proportion": 0.000561,
+      "upper_bound": 69
+    },
+    {
+      "bucket_index": 7,
+      "count": 151,
+      "label": "70-79",
+      "lower_bound": 70,
+      "proportion": 0.000543,
+      "upper_bound": 79
+    },
+    {
+      "bucket_index": 8,
+      "count": 185,
+      "label": "80-89",
+      "lower_bound": 80,
+      "proportion": 0.000666,
+      "upper_bound": 89
+    },
+    {
+      "bucket_index": 9,
+      "count": 1263,
+      "label": "90-100",
+      "lower_bound": 90,
+      "proportion": 0.004545,
+      "upper_bound": 100
+    }
+  ],
+  "sha256_checksum": "36f5acb21f4da3a925ca2df9d4cf0745d42f4c88506403c92a98cf57a2495675",
+  "tier_proportions": {
+    "CRITICAL": 0.005323,
+    "HIGH": 0.000993,
+    "LOW": 0.992036,
+    "MEDIUM": 0.001648
+  }
+}
