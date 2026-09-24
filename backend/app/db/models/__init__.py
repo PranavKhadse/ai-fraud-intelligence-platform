@@ -30,6 +30,7 @@ from backend.app.db.models.feature_attribution import EvaluationFeatureAttributi
 from backend.app.db.models.audit_log import AuditLog
 from backend.app.db.models.case import Case, CaseNote
 from backend.app.db.models.monitoring_snapshot import ModelMonitoringSnapshot
+from backend.app.db.models.model_registry import ModelRegistryEntry
 
 __all__ = [
     # Base and Mixins
@@ -62,4 +63,5 @@ __all__ = [
     "Case",
     "CaseNote",
     "ModelMonitoringSnapshot",
+    "ModelRegistryEntry",
 ]

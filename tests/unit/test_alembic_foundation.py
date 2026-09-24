@@ -47,7 +47,7 @@ class TestAlembicConfiguration:
 class TestTargetMetadataIntegration:
     """Validates target_metadata synchronization with SQLAlchemy DeclarativeBase."""
 
-    def test_target_metadata_contains_all_nine_tables(self):
+    def test_target_metadata_contains_all_ten_tables(self):
         from backend.alembic.env import target_metadata
 
         assert target_metadata is Base.metadata
@@ -61,6 +61,7 @@ class TestTargetMetadataIntegration:
             "cases",
             "case_notes",
             "model_monitoring_snapshots",
+            "model_registry_entries",
         }
         registered_tables = set(target_metadata.tables.keys())
         assert expected_tables == registered_tables, f"Mismatch in tables: {registered_tables ^ expected_tables}"
@@ -130,6 +131,22 @@ class TestMonitoringMigrationRevision:
         assert callable(monitoring_migration.downgrade)
 
 
+class TestModelRegistryMigrationRevision:
+    """Validates the 0005 model_registry_entries migration script structure."""
+
+    def test_model_registry_migration_file_exists(self):
+        migration_file = Path("backend/alembic/versions/0005_add_model_registry_table.py")
+        assert migration_file.exists()
+
+    def test_model_registry_migration_attributes(self):
+        registry_migration = importlib.import_module("backend.alembic.versions.0005_add_model_registry_table")
+
+        assert registry_migration.revision == "0005_add_model_registry_table"
+        assert registry_migration.down_revision == "0004_add_model_monitoring_snapshots_table"
+        assert callable(registry_migration.upgrade)
+        assert callable(registry_migration.downgrade)
+
+
 class TestOfflineSQLGeneration:
     """Validates offline SQL DDL generation without a live PostgreSQL database."""
 
@@ -143,7 +160,7 @@ class TestOfflineSQLGeneration:
         command.upgrade(cfg, "head", sql=True)
         return buffer.getvalue()
 
-    def test_all_nine_tables_created_in_sql(self, generated_sql: str):
+    def test_all_ten_tables_created_in_sql(self, generated_sql: str):
         assert "CREATE TABLE transactions" in generated_sql
         assert "CREATE TABLE risk_evaluations" in generated_sql
         assert "CREATE TABLE evaluation_rule_matches" in generated_sql
@@ -153,6 +170,7 @@ class TestOfflineSQLGeneration:
         assert "CREATE TABLE cases" in generated_sql
         assert "CREATE TABLE case_notes" in generated_sql
         assert "CREATE TABLE model_monitoring_snapshots" in generated_sql
+        assert "CREATE TABLE model_registry_entries" in generated_sql
 
     def test_cases_table_constraints_in_sql(self, generated_sql: str):
         assert "chk_cases_disposition_state" in generated_sql

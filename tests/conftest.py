@@ -116,6 +116,7 @@ async def db_session(pg_engine: Optional[AsyncEngine]) -> AsyncGenerator[AsyncSe
         await conn.execute(
             text(
                 "TRUNCATE TABLE "
+                "model_registry_entries, "
                 "model_monitoring_snapshots, "
                 "case_notes, "
                 "cases, "
