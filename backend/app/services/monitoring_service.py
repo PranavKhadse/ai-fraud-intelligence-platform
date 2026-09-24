@@ -49,7 +49,9 @@ from ml.monitoring.feature_drift import FeatureDriftCalculator
 from ml.monitoring.performance import ModelPerformanceCalculator
 from ml.monitoring.prediction_drift import PredictionDriftCalculator
 from ml.monitoring.schemas import (
+    CategoricalFeatureProfile,
     FeatureDriftReport,
+    NumericalFeatureProfile,
     PerformanceReport,
     PredictionDriftReport,
     SingleFeatureDriftResult,

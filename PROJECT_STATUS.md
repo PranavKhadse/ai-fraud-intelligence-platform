@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md — Project Tracking & Status Dashboard
 
 > **Platform:** AI-Powered Fraud Detection & Risk Intelligence Platform
-> **Last Updated:** Current Date (Phase 12 Implementation Completed)
-> **Current Active Phase:** **Phase 12 — Human Review & Case Management (Completed)**
+> **Last Updated:** Current Date (Phase 13 Implementation Completed)
+> **Current Active Phase:** **Phase 13 — ML & Model Monitoring (Completed)**
 
 ---
 
@@ -23,7 +23,7 @@
 | **Phase 10** | **Real-Time Detection & Benchmarking** | 🟢 **Completed** | Milestone 10 |
 | **Phase 11** | **Fraud Intelligence Dashboard** | 🟢 **Completed** | Milestone 11 |
 | **Phase 12** | **Human Review & Case Management** | 🟢 **Completed** | Milestone 12 |
-| **Phase 13** | **ML & Model Monitoring** | ⚪ Pending | Phase 13 |
+| **Phase 13** | **ML & Model Monitoring** | 🟢 **Completed** | Milestone 13 |
 | **Phase 14** | **MLOps, Retraining & Model Registry** | ⚪ Pending | Phase 14 |
 | **Phase 15** | **Security, Auth & Audit Logging** | ⚪ Pending | Phase 15 |
 | **Phase 16** | **Containerization & Deployment** | ⚪ Pending | Phase 16 |
@@ -324,6 +324,17 @@
   6. Persist immutable point-in-time feature snapshots and human dispositions to serve as ground-truth training datasets for Phase 14 retraining pipelines.
 - **Status**: Accepted (Phase 12).
 
+### ADR-018: Statistical Drift & Model Performance Observability Architecture
+- **Context**: In-production ML models suffer from feature drift, concept drift, and performance degradation due to evolving fraud patterns and macroeconomic shifts.
+- **Decision**:
+  1. Implement statistical feature drift using 10-decile Population Stability Index (PSI), asymptotic two-sample Kolmogorov-Smirnov (KS) tests against 5,000 empirical reference samples, and Jensen-Shannon Divergence (JSD) for categorical predictors.
+  2. Implement prediction drift tracking raw model score PSI, 100-point risk score decile PSI, 4-tier risk distribution JSD, 3-way decision action JSD, and rule-override delta isolation.
+  3. Formulate ground-truth model performance evaluation using analyst case dispositions (`CONFIRMED_FRAUD`, `LEGITIMATE`, `RESOLVED_FALSE_POSITIVE`), full confusion matrices, and relative percentage degradation vs OOT benchmarks ($t=0.78$).
+  4. Enforce strict sample-size confidence guardrails ($N < 100$ features $\to$ `INSUFFICIENT_DATA`, $N_{\text{labeled}} < 20$ performance $\to$ `INSUFFICIENT_DATA`, $20 \le N_{\text{labeled}} < 100 \to$ `LOW_SAMPLE`).
+  5. Enforce read-only non-mutating execution across `transactions`, `risk_evaluations`, `cases`, and `audit_logs`.
+  6. Persist daily/weekly aggregated reports in dedicated `monitoring_snapshots` table with unique window constraint for idempotency.
+- **Status**: Accepted (Phase 13).
+
 ---
 
 ## ⚠️ Known Constraints & Risk Register
@@ -335,13 +346,14 @@
 5. **Distributed Ambiguous Commit Outcome**: If network connectivity drops while awaiting PostgreSQL `COMMIT` acknowledgement, the outcome is inherently ambiguous across distributed nodes. The idempotency design safely handles both outcomes upon subsequent retry: if the transaction committed, the retry replays the result (`200 OK`); if the commit was rolled back by PostgreSQL, the retry performs clean evaluation and persistence.
 6. **Local Single-Node CPU Contention**: Synchronous TreeSHAP execution and PostgreSQL commits on a shared local host constrain peak throughput to ~26.5 TPS. Offloading persistence and TreeSHAP attributions to background asynchronous queues is recommended for high-volume (>1,000 TPS) deployments.
 7. **Near-Real-Time Feed Polling**: The Live Transaction Feed operates via configurable near-real-time client-side polling (5s/10s/30s) rather than WebSocket streaming. For high-volume (>5,000 TPS) streams, WebSocket or Server-Sent Events (SSE) should be evaluated.
+8. **Label Latency in Real-Time Windows**: Ground-truth performance tracking is subject to analyst investigation latency; real-time windows (< 1h) evaluate to `LOW_SAMPLE` or `INSUFFICIENT_DATA` until cases are dispositioned.
 
 ---
 
-## ⏭ Next Step: Preparation for Phase 13 (ML & Model Monitoring)
+## ⏭ Next Step: Preparation for Phase 14 (MLOps, Retraining & Model Registry)
 
-When approved to start Phase 13:
-- Implement data and prediction drift detection (Population Stability Index / PSI, Wasserstein distance).
-- Establish performance degradation monitoring against baseline benchmarks.
-- Implement automated alerting and metric aggregation for operational risk governance.
+When approved to start Phase 14:
+- Ingest dispositioned ground-truth cases and immutable feature snapshots as retraining datasets.
+- Implement automated model candidate training, validation, and champion vs challenger benchmarking.
+- Establish model registry, automated promotion workflows, and canary deployment pipelines.
 

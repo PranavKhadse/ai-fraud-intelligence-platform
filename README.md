@@ -358,28 +358,62 @@ The platform provides a comprehensive, concurrency-hardened Human Review & Case 
 
 ---
 
+## 📈 ML & Model Monitoring Platform (Phase 13)
+
+The platform provides a comprehensive statistical observability and drift intelligence system (`ml/monitoring/`, `backend/app/services/monitoring_service.py`, `frontend/src/pages/MonitoringPage.tsx`):
+
+- **Feature Distribution Drift**:
+  - Evaluates Population Stability Index (PSI) over 10 deciles and asymptotic two-sample Kolmogorov-Smirnov (KS) tests against 5,000 empirical reference samples for all 55 features.
+  - Detects missing-rate surges, column dropouts, and categorical Jensen-Shannon Divergence (JSD) with unseen level alerts.
+- **Prediction & Policy Drift**:
+  - Tracks raw model score PSI, 10-bucket risk score PSI, 4-tier risk distribution JSD, and 3-way decision action JSD.
+  - Isolates rule-override frequency deltas distinguishing ML model drift from policy rule changes.
+- **Ground-Truth Model Performance Tracking**:
+  - Maps human analyst case dispositions into ground truth, computing complete confusion matrices at operating threshold ($t=0.78$), precision, recall, specificity, F1-score, FPR, ROC-AUC, PR-AUC, and review queue purity.
+  - Quantifies mathematical relative percentage degradation vs. baseline OOT benchmarks.
+- **Sample-Size Confidence Guardrails**:
+  - Enforces minimum observation sample sizes ($N < 100 \to \text{INSUFFICIENT\_DATA}$, $N_{\text{labeled}} < 20 \to \text{INSUFFICIENT\_DATA}$, $20 \le N_{\text{labeled}} < 100 \to \text{LOW\_SAMPLE}$).
+- **Dedicated Read-Only Isolation & Snapshot Storage**:
+  - Dedicated `monitoring_snapshots` PostgreSQL table with unique window constraint for idempotent persistence and fast-path resolution.
+  - Guarantees zero writes/mutations to `transactions`, `risk_evaluations`, `cases`, and `audit_logs`.
+- **Interactive Monitoring Dashboard**:
+  - React sub-dashboards for Health Overview, Feature Drift Analysis, Prediction Drift Analysis, Performance Tracking, and Snapshot History.
+
+### Running Monitoring Benchmarks & CLI:
+```bash
+# Run full performance benchmark suite
+python scripts/benchmark_monitoring.py --output-json docs/monitoring_benchmark_results.json --output-csv docs/monitoring_benchmark_results.csv
+
+# CLI drift and performance checks
+python ml/monitoring/cli.py check-feature-drift --window 24h
+python ml/monitoring/cli.py check-prediction-drift --window 24h
+python ml/monitoring/cli.py check-performance --window 24h
+```
+
+---
+
 ## 🧪 Running Automated Tests
 
-Run the complete test suite across ML models, risk engine, database persistence, benchmarking, and case management:
+Run the complete test suite across ML models, risk engine, database persistence, benchmarking, case management, and model monitoring:
 ```bash
 python -m pytest tests/ -q
 ```
 
 Run specific test modules:
 ```bash
-# Unit tests (schemas, health, repositories, lifecycle, models)
+# Unit tests (schemas, health, repositories, lifecycle, models, monitoring)
 python -m pytest tests/unit/ -v
 
 # API & Persistence Integration tests
 python -m pytest tests/integration/ -v
 
-# Phase 12.5 End-to-End Lifecycle & Concurrency tests
+# Phase 13 Monitoring & Drift tests
+python -m pytest tests/unit/test_monitoring_*.py tests/unit/test_feature_drift.py tests/unit/test_prediction_drift.py tests/unit/test_model_performance.py tests/integration/test_monitoring_*.py -v
+
+# Phase 12.5 End-to-End Case Lifecycle tests
 python -m pytest tests/integration/test_case_e2e_lifecycle.py -v
 
 # ML, Feature Engineering & Risk Engine tests
 python -m pytest tests/ml/ -v
-
-# Phase 10 Benchmarking focused tests
-python -m pytest tests/unit/test_benchmarking_*.py tests/integration/test_benchmarking_*.py -v
 ```
 
