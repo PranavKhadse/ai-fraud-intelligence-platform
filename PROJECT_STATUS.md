@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md — Project Tracking & Status Dashboard
 
 > **Platform:** AI-Powered Fraud Detection & Risk Intelligence Platform
-> **Last Updated:** Current Date (Phase 13 Implementation Completed)
-> **Current Active Phase:** **Phase 13 — ML & Model Monitoring (Completed)**
+> **Last Updated:** Current Date (Phase 14.5 Implementation Completed)
+> **Current Active Phase:** **Phase 14 — MLOps, Retraining & Model Registry (Subphases 14.1 - 14.5 Completed)**
 
 ---
 
@@ -24,11 +24,129 @@
 | **Phase 11** | **Fraud Intelligence Dashboard** | 🟢 **Completed** | Milestone 11 |
 | **Phase 12** | **Human Review & Case Management** | 🟢 **Completed** | Milestone 12 |
 | **Phase 13** | **ML & Model Monitoring** | 🟢 **Completed** | Milestone 13 |
-| **Phase 14** | **MLOps, Retraining & Model Registry** | ⚪ Pending | Phase 14 |
+| **Phase 14** | **MLOps, Retraining & Model Registry** | 🟢 **Completed (14.1–14.6 Completed)** | Milestone 14 |
 | **Phase 15** | **Security, Auth & Audit Logging** | ⚪ Pending | Phase 15 |
 | **Phase 16** | **Containerization & Deployment** | ⚪ Pending | Phase 16 |
 | **Phase 17** | **Comprehensive Testing Suite** | ⚪ Pending | Phase 17 |
 | **Phase 18** | **Final Portfolio Polish & Runbooks** | ⚪ Pending | Phase 18 |
+
+---
+
+## ✅ Phase 14 Deliverable Checklist (MLOps, Retraining & Model Registry)
+
+### Phase 14.1: Model Lifecycle Foundation & Model Registry
+- [x] Defined immutable lifecycle state machine (`CANDIDATE`, `CHALLENGER`, `CHAMPION`, `REJECTED`, `ARCHIVED`, `ROLLED_BACK`) and typed schemas in `ml/lifecycle/schemas.py`.
+- [x] Built relational `model_registry_entries` PostgreSQL schema with single active champion constraint (`is_active_champion`).
+- [x] Initialized and registered authoritative Champion v1.0.0 (`XGBoost Classifier`, $\tau=0.94$).
+- [x] Created `ModelRegistryEngine` with atomic state transitions and cryptographic SHA-256 integrity validation.
+
+### Phase 14.2: Challenger Dataset & Retraining Pipeline
+- [x] Architected leak-free retraining dataset builder (`DatasetSplitter`) preserving historical temporal boundaries.
+- [x] Built `ChallengerTrainer` with deterministic 55-feature alignment, reproducible random seeds, and artifact packaging.
+- [x] Trained Candidate v1.1.0 on 648,336 transactions with full provenance logging in `manifest.json`.
+
+### Phase 14.3: Full Candidate Evaluation & Threshold Optimization
+- [x] Implemented `FullCandidateEvaluator` with strict separation between Validation and protected OOT holdout.
+- [x] Swept 99 candidate thresholds on 277,859 validation rows, selecting optimal $\tau^* = 0.78$.
+- [x] Evaluated Candidate v1.1.0 on 277,860 protected OOT rows at frozen $\tau^* = 0.78$ with zero leakage.
+- [x] Persisted detailed validation and OOT classification, operational, and cost metrics into registry.
+
+### Phase 14.4: Champion vs Challenger Comparative Evaluation
+- [x] Implemented `ChampionChallengerComparator` for side-by-side comparative benchmarking.
+- [x] Standardized latency measurement methodology ($N=50$ identical rows, 5 warmups, high-resolution CPU timing).
+- [x] Evaluated Champion ($\tau=0.94$) vs Candidate ($\tau=0.78$) across Validation ($277,859$ rows) and OOT ($277,860$ rows).
+- [x] Computed neutral mathematical deltas (absolute, percentage points, relative %) with zero evaluative bias.
+- [x] Generated authoritative comparison artifact `ml/models/registry/comparisons/comparison_v1.0.0_vs_v1.1.0.json`.
+
+### Phase 14.5: Promotion Gate & Human Sign-Off System
+- [x] Formulated 11 multi-dimensional promotion criteria across 6 dimensions, explicitly tagged as **Governance Policy Configurations** or **Existing System Requirements**.
+- [x] Built `PromotionGateEvaluator` loading Phase 14.4 comparison evidence and dynamically verifying on-disk Champion SHA-256 hashes.
+- [x] Evaluated Candidate v1.1.0: Passed 11 / 11 criteria, achieving `is_eligible = True`.
+- [x] Built `HumanSignOffEngine` enforcing RBAC authorization (`ADMIN`, `ANALYST`), minimum 15-char rationale, eligibility preconditions, and immutable audit persistence.
+- [x] Verified Champion immutability, Candidate lifecycle state preservation (`status = CANDIDATE`, `is_active_champion = False`), and isolated test execution.
+- [x] Authored authoritative governance report in `docs/phase_14_promotion_governance_report.md`.
+
+### Phase 14.6: Staged Model Promotion & Rollback Engine
+- [x] Built `ModelPromotionEngine` enforcing 16-point precondition verification, PostgreSQL row locking (`SELECT FOR UPDATE`), isolated staging validation (55-feature matrix inference), active artifact backup, and atomic DB commit.
+- [x] Built `ModelRollbackEngine` providing explicit, auditable rollback to verified historical bundles with full metadata restoration.
+- [x] Implemented `PromotionRecoveryEngine` for startup crash reconciliation and state recovery (`FILESYSTEM_SWAPPED` $\to$ `RECOVERY_COMPLETED`, `DB_COMMITTED` $\to$ `FINALIZED`).
+- [x] Established durable operation journaling state machine (`REQUESTED` $\to$ `VALIDATED` $\to$ `STAGED` $\to$ `FILESYSTEM_SWAPPED` $\to$ `DB_COMMITTED` $\to$ `FINALIZED`).
+- [x] Preserved existing Champion v1.0.0 active status and Candidate v1.1.0 `CANDIDATE` status in production.
+- [x] Authored comprehensive operational runbook in `docs/phase_14_promotion_and_rollback_runbook.md`.
+
+---
+
+### ADR-010: Cost-Sensitive Decision Boundary Optimization & Leakage-Safe Governance
+- **Status**: Accepted (Phase 5).
+
+### ADR-011: Hybrid Risk Decisioning & Standard Rule Catalog Governance
+- **Status**: Accepted (Phase 6).
+
+### ADR-012: Native TreeSHAP Explanations & Margin Waterfall Transparency
+- **Status**: Accepted (Phase 7).
+
+### ADR-013: FastAPI Microservice Architecture & Zero-Mutation Inference
+- **Status**: Accepted (Phase 8).
+
+### ADR-014: Relational PostgreSQL Persistence, Unit of Work & Idempotency Architecture
+- **Status**: Accepted (Phase 9).
+
+### ADR-015: Empirical High-Resolution Latency Profiling & Multi-Tier Benchmark Architecture
+- **Status**: Accepted (Phase 10).
+
+### ADR-016: Read-Only What-If Simulation Architecture & Zero-Write State Governance
+- **Status**: Accepted (Phase 11).
+
+### ADR-017: Human Review & Case Management Lifecycle Architecture
+- **Status**: Accepted (Phase 12).
+
+### ADR-018: Statistical Drift & Model Performance Observability Architecture
+- **Status**: Accepted (Phase 13).
+
+### ADR-019: Multi-Dimensional Promotion Gate & RBAC Human Sign-Off Governance Architecture
+- **Context**: Transitioning candidate models into production creates systemic financial and operational risk if quality evaluation is unconstrained, automated without human accountability, or lacks cryptographic integrity safeguards.
+- **Decision**:
+  1. Separate governance criteria into **Governance Policy Configurations** (enterprise policy tolerances) and **Existing System Requirements** (foundational contracts).
+  2. Evaluate 11 multi-dimensional criteria spanning statistical ranking (PR-AUC parity $\pm 0.0050$), detection effectiveness (zero recall regression, FN ceiling), financial risk (expected decision cost ceiling), operational stability (FPR ceiling $\le 0.0020$, block precision $\ge 70\%$), latency SLA (p95 $\le 5.0\text{ ms}$, $\le 1.50\times$ Champion), feature contract (55 canonical features), partition integrity ($277,859$ val / $277,860$ OOT rows), and dynamic on-disk Champion hash verification.
+  3. Enforce strictly neutral mathematical deltas (`POSITIVE`, `NEGATIVE`, `ZERO`, absolute, pp, relative %) with zero subjective terminology.
+  4. Decouple promotion eligibility (`is_eligible`) from model promotion execution. Automated gates evaluate eligibility only; promotion requires explicit human sign-off.
+  5. Implement `HumanSignOffEngine` with RBAC authorization (`ADMIN`, `ANALYST`), minimum 15-character rationale validation, eligibility precondition checks, and atomic conflict prevention.
+  6. Enforce strict isolation: automated test suites must never write test approval records to production sign-off directories.
+- **Status**: Accepted (Phase 14.5).
+
+---
+
+## ⚠️ Known Constraints & Risk Register
+
+1. **Analyst Review Scope**: Explanation payloads and reason codes provide interpretability and triage assistance for human investigators; they do not constitute statutory legal compliance certifications.
+2. **Margin vs Probability Additivity**: TreeSHAP attributions are additive in raw log-odds margin space. Due to the non-linearity of the logistic sigmoid link function, individual feature contributions cannot be linearly summed in probability space.
+3. **Review Queue Operational Sizing**: Hybrid rule overrides add manual review volume (+168.4% in OOT holdout). Real-world deployments must size analyst capacity accordingly.
+4. **Static Cost Assumptions**: Current threshold benchmarks assume fixed unit costs ($C_{\text{FP}}=\$15, C_{\text{FN}}=\$200, C_{\text{REV}}=\$5$). Dynamic amount-weighted scoring is recommended for future financial optimization.
+5. **Distributed Ambiguous Commit Outcome**: If network connectivity drops while awaiting PostgreSQL `COMMIT` acknowledgement, the outcome is inherently ambiguous across distributed nodes. The idempotency design safely handles both outcomes upon subsequent retry: if the transaction committed, the retry replays the result (`200 OK`); if the commit was rolled back by PostgreSQL, the retry performs clean evaluation and persistence.
+6. **Local Single-Node CPU Contention**: Synchronous TreeSHAP execution and PostgreSQL commits on a shared local host constrain peak throughput to ~26.5 TPS. Offloading persistence and TreeSHAP attributions to background asynchronous queues is recommended for high-volume (>1,000 TPS) deployments.
+7. **Near-Real-Time Feed Polling**: The Live Transaction Feed operates via configurable near-real-time client-side polling (5s/10s/30s) rather than WebSocket streaming. For high-volume (>5,000 TPS) streams, WebSocket or Server-Sent Events (SSE) should be evaluated.
+8. **Label Latency in Real-Time Windows**: Ground-truth performance tracking is subject to analyst investigation latency; real-time windows (< 1h) evaluate to `LOW_SAMPLE` or `INSUFFICIENT_DATA` until cases are dispositioned.
+9. **Human Sign-Off Precondition**: Candidate promotion requires explicit, authorized sign-off from an `ADMIN` or `ANALYST` role after passing all 11 governance gates.
+
+### ADR-020: Staged Model Promotion, Cryptographic Verification & Reversible Rollback Architecture
+- **Status**: Accepted (Phase 14.6).
+- **Context**: Transitioning candidate machine learning models into active production serving introduces critical operational and financial risks if deployments lack concurrency safeguards, isolated pre-activation validation, historical immutability, or deterministic crash recovery.
+- **Decision**:
+  1. Implemented explicit, manual-only promotion and rollback workflows (`ModelPromotionEngine`, `ModelRollbackEngine`) with strictly enforced RBAC (`ADMIN`, `ANALYST`) and mandatory business rationales ($\ge 15$ chars). Zero automatic promotion or retraining.
+  2. Implemented a 16-point precondition verification protocol binding candidate artifact hashes (`model.joblib`, `preprocessor.joblib`, `manifest.json`), active Champion hashes, Phase 14.4 comparison evidence SHA-256, and Phase 14.5 APPROVED human sign-off.
+  3. Enforced multi-instance concurrency safety via PostgreSQL `SELECT FOR UPDATE` row locks on both current Champion and candidate registry entries.
+  4. Built an isolated staging validation environment executing deserialization, synthetic 55-feature matrix inference, threshold validation, and runtime `model_metadata.json` contract construction prior to active artifact replacement.
+  5. Implemented durable operation journaling (`PromotionOperationJournal`) tracking states: `REQUESTED` $\to$ `VALIDATED` $\to$ `STAGED` $\to$ `FILESYSTEM_SWAPPED` $\to$ `DB_COMMITTED` $\to$ `FINALIZED`.
+  6. Provided compensating restoration from `.active_champion_backup_{operation_id}` upon pre-commit failures and startup crash reconciliation via `PromotionRecoveryEngine`.
+
+---
+
+## ⏭ Next Step: Preparation for Phase 15 (Security, Auth & Audit Logging)
+
+When approved to start Phase 15:
+- Implement enterprise authentication and role-based access control (RBAC) across all API endpoints.
+- Enhance audit logging infrastructure with cryptographic chain verification.
+- Implement API rate limiting and DDoS mitigation middleware.
 
 ---
 

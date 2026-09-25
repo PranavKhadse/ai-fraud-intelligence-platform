@@ -15,8 +15,18 @@ class LifecycleConfig:
     registry_dir: Path = Path("ml/models/registry")
     bundles_dir: Path = Path("ml/models/registry/bundles")
     candidates_dir: Path = Path("ml/models/registry/candidates")
+    comparisons_dir: Path = Path("ml/models/registry/comparisons")
+    signoffs_dir: Path = Path("ml/models/registry/signoffs")
     staging_dir: Path = Path("ml/models/registry/staging")
+    operations_dir: Path = Path("ml/models/registry/operations")
+    promotions_dir: Path = Path("ml/models/registry/promotions")
+    rollbacks_dir: Path = Path("ml/models/registry/rollbacks")
+    active_backup_prefix: str = ".active_champion_backup_"
     active_artifacts_dir: Path = Path("ml/models/artifacts")
+
+    @property
+    def registry_root(self) -> Path:
+        return self.registry_dir
     
     # Active champion files
     champion_model_path: Path = Path("ml/models/artifacts/champion_model.joblib")

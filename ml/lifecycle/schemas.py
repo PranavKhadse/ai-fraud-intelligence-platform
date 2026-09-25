@@ -26,6 +26,7 @@ class ModelLifecycleStatus(str, Enum):
 VALID_LIFECYCLE_TRANSITIONS: Dict[ModelLifecycleStatus, Set[ModelLifecycleStatus]] = {
     ModelLifecycleStatus.CANDIDATE: {
         ModelLifecycleStatus.CHALLENGER,
+        ModelLifecycleStatus.CHAMPION,
         ModelLifecycleStatus.REJECTED,
     },
     ModelLifecycleStatus.CHALLENGER: {

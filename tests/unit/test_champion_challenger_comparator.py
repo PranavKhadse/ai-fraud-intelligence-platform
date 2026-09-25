@@ -306,12 +306,16 @@ class TestChampionChallengerComparatorUnit:
 
 
     def test_champion_artifact_immutability_enforced(
-        self, mock_champion_bundle, mock_candidate_bundle, mock_datasets, monkeypatch
+        self, mock_champion_bundle, mock_candidate_bundle, mock_datasets, monkeypatch, tmp_path: Path
     ):
         """Verify tampering with Champion artifact triggers ChampionImmutabilityViolationError."""
         val_path, oot_path = mock_datasets
         comparator = ChampionChallengerComparator(
-            lifecycle_config=LifecycleConfig(expected_feature_count=55)
+            lifecycle_config=LifecycleConfig(
+                registry_dir=tmp_path,
+                comparisons_dir=tmp_path / "comparisons",
+                expected_feature_count=55,
+            )
         )
 
         champ_m_path = mock_champion_bundle / "champion_model.joblib"
@@ -332,18 +336,23 @@ class TestChampionChallengerComparatorUnit:
                 champion_source=mock_champion_bundle,
                 val_dataset_path=val_path,
                 oot_dataset_path=oot_path,
+                output_comparison_file=tmp_path / "comp.json",
                 benchmark_latency=False,
             )
 
         assert "Champion immutability violation detected" in str(exc_info.value)
 
     def test_candidate_state_invariants_and_provenance(
-        self, mock_champion_bundle, mock_candidate_bundle, mock_datasets
+        self, mock_champion_bundle, mock_candidate_bundle, mock_datasets, tmp_path: Path
     ):
         """Verify Candidate lifecycle state remains CANDIDATE and is_active_champion=False."""
         val_path, oot_path = mock_datasets
         comparator = ChampionChallengerComparator(
-            lifecycle_config=LifecycleConfig(expected_feature_count=55)
+            lifecycle_config=LifecycleConfig(
+                registry_dir=tmp_path,
+                comparisons_dir=tmp_path / "comparisons",
+                expected_feature_count=55,
+            )
         )
 
         result = comparator.compare(
@@ -351,6 +360,7 @@ class TestChampionChallengerComparatorUnit:
             champion_source=mock_champion_bundle,
             val_dataset_path=val_path,
             oot_dataset_path=oot_path,
+            output_comparison_file=tmp_path / "comp.json",
             benchmark_latency=False,
         )
 
@@ -371,7 +381,11 @@ class TestChampionChallengerComparatorUnit:
         out_file = tmp_path / "test_comparison.json"
 
         comparator = ChampionChallengerComparator(
-            lifecycle_config=LifecycleConfig(expected_feature_count=55)
+            lifecycle_config=LifecycleConfig(
+                registry_dir=tmp_path,
+                comparisons_dir=tmp_path / "comparisons",
+                expected_feature_count=55,
+            )
         )
 
         result = comparator.compare(
@@ -395,7 +409,7 @@ class TestChampionChallengerComparatorUnit:
         assert reloaded.latency_comparison.measured_samples == 50
 
     def test_zero_oot_leakage_invariants(
-        self, mock_champion_bundle, mock_candidate_bundle, mock_datasets
+        self, mock_champion_bundle, mock_candidate_bundle, mock_datasets, tmp_path: Path
     ):
         """Verify protected OOT evaluation is strictly read-only and does not mutate model state."""
         val_path, oot_path = mock_datasets
@@ -404,7 +418,11 @@ class TestChampionChallengerComparatorUnit:
         cand_p_sha_before = calculate_file_sha256(mock_candidate_bundle / "preprocessor.joblib")
 
         comparator = ChampionChallengerComparator(
-            lifecycle_config=LifecycleConfig(expected_feature_count=55)
+            lifecycle_config=LifecycleConfig(
+                registry_dir=tmp_path,
+                comparisons_dir=tmp_path / "comparisons",
+                expected_feature_count=55,
+            )
         )
 
         result = comparator.compare(
@@ -412,6 +430,7 @@ class TestChampionChallengerComparatorUnit:
             champion_source=mock_champion_bundle,
             val_dataset_path=val_path,
             oot_dataset_path=oot_path,
+            output_comparison_file=tmp_path / "comp.json",
             benchmark_latency=False,
         )
 
@@ -419,4 +438,5 @@ class TestChampionChallengerComparatorUnit:
         assert calculate_file_sha256(mock_candidate_bundle / "model.joblib") == cand_m_sha_before
         assert calculate_file_sha256(mock_candidate_bundle / "preprocessor.joblib") == cand_p_sha_before
         assert result.candidate_operating_threshold == 0.78
+
 
