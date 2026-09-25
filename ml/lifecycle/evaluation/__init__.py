@@ -12,10 +12,32 @@ from ml.lifecycle.evaluation.metrics import (
     calculate_evaluation_metrics,
     calculate_latency_distribution,
 )
+from ml.lifecycle.evaluation.operational import OperationalDecisionEvaluator
+from ml.lifecycle.evaluation.pipeline import FullCandidateEvaluationPipeline
 from ml.lifecycle.evaluation.schemas import (
     CandidateEvaluationResult,
     EvaluationScope,
+    FullCandidateEvaluationResult,
     GateResult,
+    OperationalDecisionMetrics,
+    ThresholdOptimizationObjective,
+    ThresholdSelectionResult,
+    ThresholdSweepPoint,
+)
+from ml.lifecycle.evaluation.threshold import CandidateThresholdAnalyzer
+from ml.lifecycle.evaluation.comparator import (
+    ChampionChallengerComparator,
+    ChampionImmutabilityViolationError,
+    ChampionMetadataDiscrepancyError,
+)
+from ml.lifecycle.evaluation.comparison_schemas import (
+    ChampionChallengerComparisonResult,
+    ClassificationComparison,
+    DeltaSign,
+    LatencyComparison,
+    MetricDelta,
+    OperationalComparison,
+    compute_metric_delta,
 )
 
 __all__ = [
@@ -28,4 +50,25 @@ __all__ = [
     "CandidateEvaluationResult",
     "EvaluationScope",
     "GateResult",
+    # Phase 14.3 Full Evaluation & Threshold Analysis additions
+    "CandidateThresholdAnalyzer",
+    "OperationalDecisionEvaluator",
+    "FullCandidateEvaluationPipeline",
+    "ThresholdOptimizationObjective",
+    "ThresholdSweepPoint",
+    "ThresholdSelectionResult",
+    "OperationalDecisionMetrics",
+    "FullCandidateEvaluationResult",
+    # Phase 14.4 Champion vs. Challenger Comparator additions
+    "ChampionChallengerComparator",
+    "ChampionImmutabilityViolationError",
+    "ChampionMetadataDiscrepancyError",
+    "ChampionChallengerComparisonResult",
+    "ClassificationComparison",
+    "DeltaSign",
+    "LatencyComparison",
+    "MetricDelta",
+    "OperationalComparison",
+    "compute_metric_delta",
 ]
+

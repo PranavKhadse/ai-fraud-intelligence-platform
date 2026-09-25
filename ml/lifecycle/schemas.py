@@ -149,6 +149,7 @@ class ModelBundleManifest(BaseModel):
     
     hyperparameters: Dict[str, Any] = Field(default_factory=dict, description="Model training hyperparameters")
     training_metadata: Dict[str, Any] = Field(default_factory=dict, description="Training dataset metadata & duration")
+    evaluation_configuration: Optional[Dict[str, Any]] = Field(default=None, description="Evaluation & threshold sweep configuration")
     policy_configuration: Dict[str, Any] = Field(default_factory=dict, description="Coupled decision policy configuration")
     
     validation_metrics: Optional[Dict[str, Any]] = Field(None, description="Benchmark metrics on Validation split")
