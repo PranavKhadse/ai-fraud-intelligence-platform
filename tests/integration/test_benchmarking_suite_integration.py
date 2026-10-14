@@ -17,6 +17,7 @@ from backend.app.benchmarking.suite import (
     BottleneckAnalysisResult,
     ConcurrencySweepResult,
 )
+from backend.app.core.config import settings
 from backend.app.db.session import get_db_session
 from backend.app.main import app
 from backend.app.services.persistence_service import FraudPersistenceService
@@ -28,9 +29,11 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 @pytest_asyncio.fixture(scope="function")
 async def benchmark_api_client(
-    db_session: AsyncSession, pg_engine: AsyncEngine
+    db_session: AsyncSession, pg_engine: AsyncEngine, monkeypatch
 ) -> AsyncGenerator[AsyncClient, None]:
     """Provide an asynchronous httpx client with request-scoped database sessions."""
+    monkeypatch.setattr(settings, "ALLOW_DEV_ACTOR_HEADERS", True)
+
     session_factory = async_sessionmaker(
         bind=pg_engine,
         class_=AsyncSession,
@@ -49,7 +52,12 @@ async def benchmark_api_client(
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver", timeout=60.0) as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        timeout=60.0,
+        headers={"X-Actor-ID": "benchmark_client", "X-Actor-Role": "API_CLIENT"},
+    ) as client:
         yield client
     app.dependency_overrides.clear()
 

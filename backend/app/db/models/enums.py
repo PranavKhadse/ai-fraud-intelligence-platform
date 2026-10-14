@@ -21,12 +21,24 @@ from ml.explainability.schemas import (
 )
 
 
+class UserRole(str, Enum):
+    """Permitted authorization roles for human users."""
+    ANALYST = "ANALYST"
+    ADMIN = "ADMIN"
+
+
 class AuditActorType(str, Enum):
     """Origin/actor responsible for an audit log event."""
     SYSTEM = "SYSTEM"
     ANALYST = "ANALYST"
     ADMIN = "ADMIN"
     API_CLIENT = "API_CLIENT"
+
+
+# Explicit actor classification sets
+HUMAN_ROLES = frozenset({UserRole.ANALYST.value, UserRole.ADMIN.value})
+MACHINE_ROLES = frozenset({AuditActorType.API_CLIENT.value})
+SYSTEM_ROLES = frozenset({AuditActorType.SYSTEM.value})
 
 
 class AuditEntityType(str, Enum):
@@ -36,6 +48,9 @@ class AuditEntityType(str, Enum):
     POLICY = "POLICY"
     SYSTEM = "SYSTEM"
     CASE = "CASE"
+    USER = "USER"
+    API_KEY = "API_KEY"
+    MODEL = "MODEL"
 
 
 class CaseStatus(str, Enum):
@@ -94,4 +109,8 @@ __all__ = [
     "CaseDisposition",
     "CaseTriggerSource",
     "CaseNoteType",
+    "UserRole",
+    "HUMAN_ROLES",
+    "MACHINE_ROLES",
+    "SYSTEM_ROLES",
 ]

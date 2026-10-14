@@ -314,7 +314,7 @@ async def get_case_summary(
 async def get_case(
     case_id: uuid.UUID,
     notes_limit: int = Query(default=100, ge=1, le=500, description="Maximum chronological notes to include"),
-    actor: ActorContext = Depends(require_role(AuditActorType.ANALYST, AuditActorType.ADMIN, AuditActorType.API_CLIENT)),
+    actor: ActorContext = Depends(require_role(AuditActorType.ANALYST, AuditActorType.ADMIN)),
     service: CaseService = Depends(get_case_service),
 ) -> CaseDetailResponse:
     try:
@@ -611,7 +611,7 @@ async def submit_disposition(
 async def get_case_timeline(
     case_id: uuid.UUID,
     limit: int = Query(default=100, ge=1, le=500, description="Maximum timeline events to return"),
-    actor: ActorContext = Depends(require_role(AuditActorType.ANALYST, AuditActorType.ADMIN, AuditActorType.API_CLIENT)),
+    actor: ActorContext = Depends(require_role(AuditActorType.ANALYST, AuditActorType.ADMIN)),
     service: CaseService = Depends(get_case_service),
 ) -> CaseTimelineResponse:
     try:

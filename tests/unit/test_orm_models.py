@@ -23,6 +23,8 @@ from backend.app.db.models import (
     EvaluationReasonCode,
     EvaluationFeatureAttribution,
     AuditLog,
+    User,
+    APIKey,
     DecisionAction,
     RiskTier,
     PolicyMode,
@@ -33,6 +35,10 @@ from backend.app.db.models import (
     ReasonSeverity,
     AuditActorType,
     AuditEntityType,
+    UserRole,
+    HUMAN_ROLES,
+    MACHINE_ROLES,
+    SYSTEM_ROLES,
 )
 
 
@@ -310,6 +316,16 @@ class TestAuditLogModel:
         table = AuditLog.__table__
         index_names = [idx.name for idx in table.indexes]
         assert "ix_audit_logs_entity_lookup" in index_names
+        assert "ix_audit_logs_entry_hash" in index_names
+
+    def test_audit_log_hash_chain_columns(self):
+        table = AuditLog.__table__
+        assert "prev_hash" in table.columns
+        assert "entry_hash" in table.columns
+        assert table.columns["prev_hash"].nullable is True
+        assert table.columns["entry_hash"].nullable is True
+        assert isinstance(table.columns["prev_hash"].type, String)
+        assert isinstance(table.columns["entry_hash"].type, String)
 
     def test_audit_log_repr(self):
         log = AuditLog(
@@ -320,11 +336,102 @@ class TestAuditLogModel:
             actor_type=AuditActorType.API_CLIENT,
             actor_id="test_key_01",
             payload={"latency_ms": 12.4},
+            prev_hash="0" * 64,
+            entry_hash="a" * 64,
         )
         rep = repr(log)
         assert "AuditLog" in rep
         assert "PREDICTION_EXECUTED" in rep
         assert "API_CLIENT" in rep
+
+
+class TestUserModel:
+    """Validates the User ORM model schema, columns, and constraints."""
+
+    def test_user_schema(self):
+        table = User.__table__
+        assert table.name == "users"
+        assert isinstance(table.columns["id"].type, Uuid)
+        assert isinstance(table.columns["username"].type, String)
+        assert isinstance(table.columns["email"].type, String)
+        assert isinstance(table.columns["hashed_password"].type, String)
+        assert isinstance(table.columns["full_name"].type, String)
+        assert isinstance(table.columns["is_active"].type, Boolean)
+        assert isinstance(table.columns["is_superuser"].type, Boolean)
+
+    def test_user_indexes_and_uniques(self):
+        table = User.__table__
+        index_names = [idx.name for idx in table.indexes]
+        assert "ix_users_username" in index_names
+        assert "ix_users_email" in index_names
+        assert "ix_users_role_active" in index_names
+
+    def test_user_role_constraint(self):
+        table = User.__table__
+        constraint_names = [c.name for c in table.constraints]
+        assert "chk_users_role_human" in constraint_names
+
+    def test_user_repr(self):
+        user = User(
+            id=uuid.uuid4(),
+            username="investigator_jane",
+            email="jane@bank.com",
+            hashed_password="bcrypt_hash_placeholder",
+            role=UserRole.ANALYST,
+            is_active=True,
+        )
+        rep = repr(user)
+        assert "User" in rep
+        assert "investigator_jane" in rep
+        assert "ANALYST" in rep
+
+
+class TestAPIKeyModel:
+    """Validates the APIKey ORM model schema, columns, foreign keys, and constraints."""
+
+    def test_api_key_schema(self):
+        table = APIKey.__table__
+        assert table.name == "api_keys"
+        assert isinstance(table.columns["id"].type, Uuid)
+        assert isinstance(table.columns["key_prefix"].type, String)
+        assert isinstance(table.columns["hashed_key"].type, String)
+        assert isinstance(table.columns["client_id"].type, String)
+        assert isinstance(table.columns["is_active"].type, Boolean)
+
+    def test_api_key_foreign_key(self):
+        table = APIKey.__table__
+        fk_list = list(table.foreign_keys)
+        assert len(fk_list) == 1
+        fk = fk_list[0]
+        assert fk.column.table.name == "users"
+        assert fk.column.name == "id"
+        assert fk.ondelete == "CASCADE"
+
+    def test_api_key_role_constraint(self):
+        table = APIKey.__table__
+        constraint_names = [c.name for c in table.constraints]
+        assert "chk_api_keys_role_machine" in constraint_names
+
+    def test_api_key_indexes(self):
+        table = APIKey.__table__
+        index_names = [idx.name for idx in table.indexes]
+        assert "ix_api_keys_hashed_key" in index_names
+        assert "ix_api_keys_prefix_active" in index_names
+
+    def test_api_key_repr(self):
+        key = APIKey(
+            id=uuid.uuid4(),
+            key_prefix="pk_live_",
+            hashed_key="sha256_hash_digest",
+            name="Payment Service Key",
+            client_id="payment_svc_01",
+            role=AuditActorType.API_CLIENT,
+            is_active=True,
+        )
+        rep = repr(key)
+        assert "APIKey" in rep
+        assert "pk_live_" in rep
+        assert "payment_svc_01" in rep
 
 
 class TestEnumPersistence:
@@ -345,6 +452,21 @@ class TestEnumPersistence:
         assert PolicyMode.TRI_TIER.value == "TRI_TIER"
         assert PolicyMode.BINARY_AUTO.value == "BINARY_AUTO"
 
+    def test_user_role_values(self):
+        assert UserRole.ANALYST.value == "ANALYST"
+        assert UserRole.ADMIN.value == "ADMIN"
+        assert len(UserRole) == 2
+        assert "SYSTEM" not in UserRole.__members__
+        assert "API_CLIENT" not in UserRole.__members__
+
+    def test_role_classifications(self):
+        assert HUMAN_ROLES == {"ANALYST", "ADMIN"}
+        assert MACHINE_ROLES == {"API_CLIENT"}
+        assert SYSTEM_ROLES == {"SYSTEM"}
+        assert HUMAN_ROLES.isdisjoint(MACHINE_ROLES)
+        assert HUMAN_ROLES.isdisjoint(SYSTEM_ROLES)
+        assert MACHINE_ROLES.isdisjoint(SYSTEM_ROLES)
+
     def test_rule_outcome_values(self):
         assert RuleOutcome.BLOCK.value == "BLOCK"
         assert RuleOutcome.REVIEW.value == "REVIEW"
@@ -359,3 +481,6 @@ class TestEnumPersistence:
         assert AuditActorType.API_CLIENT.value == "API_CLIENT"
         assert AuditEntityType.TRANSACTION.value == "TRANSACTION"
         assert AuditEntityType.RISK_EVALUATION.value == "RISK_EVALUATION"
+        assert AuditEntityType.USER.value == "USER"
+        assert AuditEntityType.API_KEY.value == "API_KEY"
+        assert AuditEntityType.MODEL.value == "MODEL"

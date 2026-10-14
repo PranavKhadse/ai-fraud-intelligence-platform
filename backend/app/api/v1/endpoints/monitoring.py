@@ -15,6 +15,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.core.security import require_role
+from backend.app.db.models.enums import AuditActorType
 from backend.app.db.session import get_db_session
 from backend.app.schemas.monitoring import (
     FeatureDriftDetailResponse,
@@ -31,7 +33,11 @@ from backend.app.services.monitoring_service import (
 
 logger = logging.getLogger("fraud_api.monitoring")
 
-router = APIRouter(prefix="/monitoring", tags=["Model Monitoring"])
+router = APIRouter(
+    prefix="/monitoring",
+    tags=["Model Monitoring"],
+    dependencies=[Depends(require_role(AuditActorType.ANALYST, AuditActorType.ADMIN))],
+)
 
 
 @router.get(

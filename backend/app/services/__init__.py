@@ -51,6 +51,25 @@ from backend.app.services.monitoring_service import (
     MonitoringService,
     get_monitoring_service,
 )
+from backend.app.services.audit_verifier import (
+    AUDIT_CHAIN_ADVISORY_LOCK_ID,
+    GENESIS_PREV_HASH,
+    STANDARD_VERIFICATION_LIMITATIONS,
+    AuditErrorType,
+    AuditIntegrityError,
+    AuditIntegrityVerifier,
+    AuditVerificationResult,
+    compute_audit_hash,
+    compute_canonical_audit_json,
+    compute_entry_hash_for_entity,
+    normalize_value_for_canonical_json,
+)
+
+from backend.app.services.security_audit import (
+    SENSITIVE_AUDIT_KEYS,
+    record_security_event,
+    sanitize_audit_payload,
+)
 
 __all__ = [
     "RiskService",
@@ -82,4 +101,19 @@ __all__ = [
     "reconstruct_prediction_response",
     "MonitoringService",
     "get_monitoring_service",
+    "AuditIntegrityVerifier",
+    "AuditVerificationResult",
+    "AuditIntegrityError",
+    "AuditErrorType",
+    "GENESIS_PREV_HASH",
+    "AUDIT_CHAIN_ADVISORY_LOCK_ID",
+    "compute_canonical_audit_json",
+    "compute_audit_hash",
+    "compute_entry_hash_for_entity",
+    "normalize_value_for_canonical_json",
+    "STANDARD_VERIFICATION_LIMITATIONS",
+    "record_security_event",
+    "sanitize_audit_payload",
+    "SENSITIVE_AUDIT_KEYS",
 ]
+

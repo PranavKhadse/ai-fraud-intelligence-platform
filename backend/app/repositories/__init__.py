@@ -18,6 +18,8 @@ from backend.app.repositories.case_repository import CaseRepository
 from backend.app.repositories.dashboard_repository import DashboardRepository
 from backend.app.repositories.model_registry_repository import ModelRegistryRepository
 from backend.app.repositories.monitoring_repository import MonitoringRepository
+from backend.app.repositories.user_repository import UserRepository
+from backend.app.repositories.api_key_repository import APIKeyRepository
 from backend.app.repositories.exceptions import (
     PersistenceConflictError,
     PersistenceError,
@@ -52,6 +54,8 @@ __all__ = [
     "FeatureAttributionRepository",
     "EvaluationFeatureAttributionRepository",
     "AuditLogRepository",
+    "UserRepository",
+    "APIKeyRepository",
     "PersistenceError",
     "PersistenceConflictError",
     "PersistenceNotFoundError",

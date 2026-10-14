@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.repositories import (
+    APIKeyRepository,
     AuditLogRepository,
     CaseRepository,
     FeatureAttributionRepository,
@@ -25,6 +26,7 @@ from backend.app.repositories import (
     RiskEvaluationRepository,
     RuleMatchRepository,
     TransactionRepository,
+    UserRepository,
 )
 from backend.app.services import (
     FraudPersistenceUnitOfWork,
@@ -77,6 +79,8 @@ class TestUnitOfWorkWiringAndInstantiation:
         assert isinstance(uow.feature_attributions, FeatureAttributionRepository)
         assert isinstance(uow.audit_logs, AuditLogRepository)
         assert isinstance(uow.cases, CaseRepository)
+        assert isinstance(uow.users, UserRepository)
+        assert isinstance(uow.api_keys, APIKeyRepository)
 
         # Verify all repositories share the exact same session instance
         assert uow.transactions._session is mock_session
@@ -86,6 +90,8 @@ class TestUnitOfWorkWiringAndInstantiation:
         assert uow.feature_attributions._session is mock_session
         assert uow.audit_logs._session is mock_session
         assert uow.cases._session is mock_session
+        assert uow.users._session is mock_session
+        assert uow.api_keys._session is mock_session
 
 
 class TestUnitOfWorkTransactionMethods:

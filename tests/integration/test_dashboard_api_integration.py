@@ -18,6 +18,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from backend.app.core.config import settings
 from backend.app.db.models.enums import DecisionAction, PolicyMode, RiskTier
 from backend.app.db.models.risk_evaluation import RiskEvaluation
 from backend.app.db.models.transaction import Transaction
@@ -32,9 +33,11 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 @pytest_asyncio.fixture(scope="function")
 async def async_api_client(
-    db_session: AsyncSession, pg_engine: AsyncEngine
+    db_session: AsyncSession, pg_engine: AsyncEngine, monkeypatch
 ) -> AsyncGenerator[AsyncClient, None]:
     """Provide an asynchronous httpx client with request-scoped database sessions."""
+    monkeypatch.setattr(settings, "ALLOW_DEV_ACTOR_HEADERS", True)
+
     session_factory = async_sessionmaker(
         bind=pg_engine,
         class_=AsyncSession,
@@ -53,7 +56,11 @@ async def async_api_client(
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        headers={"X-Actor-ID": "test_analyst", "X-Actor-Role": "ANALYST"},
+    ) as client:
         yield client
     app.dependency_overrides.clear()
 

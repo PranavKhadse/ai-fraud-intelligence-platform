@@ -27,6 +27,19 @@ from backend.app.schemas.case import (
     TimelineEventItem,
     CaseTimelineResponse,
 )
+from backend.app.schemas.auth import (
+    LoginRequest,
+    RefreshTokenRequest,
+    UserProfileResponse,
+    TokenResponse,
+    UserCreateRequest,
+    APIKeyCreateRequest,
+    APIKeyCreateResponse,
+)
+from backend.app.schemas.audit import (
+    AuditIntegrityErrorSchema,
+    AuditVerificationResponse,
+)
 
 __all__ = [
     "HealthResponse",
@@ -50,4 +63,14 @@ __all__ = [
     "CaseDetailResponse",
     "TimelineEventItem",
     "CaseTimelineResponse",
+    "LoginRequest",
+    "RefreshTokenRequest",
+    "UserProfileResponse",
+    "TokenResponse",
+    "UserCreateRequest",
+    "APIKeyCreateRequest",
+    "APIKeyCreateResponse",
+    "AuditIntegrityErrorSchema",
+    "AuditVerificationResponse",
 ]
+

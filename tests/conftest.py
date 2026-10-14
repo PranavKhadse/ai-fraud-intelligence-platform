@@ -170,3 +170,15 @@ async def uow(db_session: AsyncSession) -> FraudPersistenceUnitOfWork:
 async def persistence_service(uow: FraudPersistenceUnitOfWork) -> FraudPersistenceService:
     """Provide a FraudPersistenceService instance bound to the test Unit of Work."""
     return FraudPersistenceService(uow)
+
+
+@pytest.fixture(autouse=True)
+def _reset_global_rate_limiter():
+    """Ensure in-memory rate limiter buckets are cleared between tests for test isolation."""
+    try:
+        from backend.app.middleware.rate_limit import global_rate_limiter
+        global_rate_limiter.clear()
+        yield
+        global_rate_limiter.clear()
+    except ImportError:
+        yield

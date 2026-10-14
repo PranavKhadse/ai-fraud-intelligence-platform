@@ -47,7 +47,7 @@ class TestAlembicConfiguration:
 class TestTargetMetadataIntegration:
     """Validates target_metadata synchronization with SQLAlchemy DeclarativeBase."""
 
-    def test_target_metadata_contains_all_ten_tables(self):
+    def test_target_metadata_contains_all_twelve_tables(self):
         from backend.alembic.env import target_metadata
 
         assert target_metadata is Base.metadata
@@ -62,6 +62,8 @@ class TestTargetMetadataIntegration:
             "case_notes",
             "model_monitoring_snapshots",
             "model_registry_entries",
+            "users",
+            "api_keys",
         }
         registered_tables = set(target_metadata.tables.keys())
         assert expected_tables == registered_tables, f"Mismatch in tables: {registered_tables ^ expected_tables}"
@@ -147,6 +149,22 @@ class TestModelRegistryMigrationRevision:
         assert callable(registry_migration.downgrade)
 
 
+class TestAuthAndAuditMigrationRevision:
+    """Validates the 0006 users, api_keys, and audit hash-chain migration script structure."""
+
+    def test_auth_and_audit_migration_file_exists(self):
+        migration_file = Path("backend/alembic/versions/0006_auth_and_audit_hash_chain.py")
+        assert migration_file.exists()
+
+    def test_auth_and_audit_migration_attributes(self):
+        auth_migration = importlib.import_module("backend.alembic.versions.0006_auth_and_audit_hash_chain")
+
+        assert auth_migration.revision == "0006_auth_and_audit_hash_chain"
+        assert auth_migration.down_revision == "0005_add_model_registry_table"
+        assert callable(auth_migration.upgrade)
+        assert callable(auth_migration.downgrade)
+
+
 class TestOfflineSQLGeneration:
     """Validates offline SQL DDL generation without a live PostgreSQL database."""
 
@@ -160,7 +178,7 @@ class TestOfflineSQLGeneration:
         command.upgrade(cfg, "head", sql=True)
         return buffer.getvalue()
 
-    def test_all_ten_tables_created_in_sql(self, generated_sql: str):
+    def test_all_twelve_tables_created_in_sql(self, generated_sql: str):
         assert "CREATE TABLE transactions" in generated_sql
         assert "CREATE TABLE risk_evaluations" in generated_sql
         assert "CREATE TABLE evaluation_rule_matches" in generated_sql
@@ -171,6 +189,19 @@ class TestOfflineSQLGeneration:
         assert "CREATE TABLE case_notes" in generated_sql
         assert "CREATE TABLE model_monitoring_snapshots" in generated_sql
         assert "CREATE TABLE model_registry_entries" in generated_sql
+        assert "CREATE TABLE users" in generated_sql
+        assert "CREATE TABLE api_keys" in generated_sql
+
+    def test_auth_and_audit_hash_chain_in_sql(self, generated_sql: str):
+        assert "prev_hash" in generated_sql
+        assert "entry_hash" in generated_sql
+        assert "ix_audit_logs_entry_hash" in generated_sql
+        assert "chk_users_username_min_length" in generated_sql
+        assert "chk_users_email_min_length" in generated_sql
+        assert "chk_users_role_human" in generated_sql
+        assert "chk_api_keys_prefix_min_length" in generated_sql
+        assert "chk_api_keys_role_machine" in generated_sql
+        assert "fk_api_keys_user_id" in generated_sql
 
     def test_cases_table_constraints_in_sql(self, generated_sql: str):
         assert "chk_cases_disposition_state" in generated_sql

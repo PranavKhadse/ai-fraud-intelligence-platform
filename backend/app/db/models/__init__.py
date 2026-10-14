@@ -21,6 +21,10 @@ from backend.app.db.models.enums import (
     CaseDisposition,
     CaseTriggerSource,
     CaseNoteType,
+    UserRole,
+    HUMAN_ROLES,
+    MACHINE_ROLES,
+    SYSTEM_ROLES,
 )
 from backend.app.db.models.transaction import Transaction
 from backend.app.db.models.risk_evaluation import RiskEvaluation
@@ -31,6 +35,8 @@ from backend.app.db.models.audit_log import AuditLog
 from backend.app.db.models.case import Case, CaseNote
 from backend.app.db.models.monitoring_snapshot import ModelMonitoringSnapshot
 from backend.app.db.models.model_registry import ModelRegistryEntry
+from backend.app.db.models.user import User
+from backend.app.db.models.api_key import APIKey
 
 __all__ = [
     # Base and Mixins
@@ -53,6 +59,10 @@ __all__ = [
     "CaseDisposition",
     "CaseTriggerSource",
     "CaseNoteType",
+    "UserRole",
+    "HUMAN_ROLES",
+    "MACHINE_ROLES",
+    "SYSTEM_ROLES",
     # Models
     "Transaction",
     "RiskEvaluation",
@@ -64,4 +74,6 @@ __all__ = [
     "CaseNote",
     "ModelMonitoringSnapshot",
     "ModelRegistryEntry",
+    "User",
+    "APIKey",
 ]

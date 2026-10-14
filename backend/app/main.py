@@ -16,6 +16,11 @@ from fastapi.responses import JSONResponse
 from backend.app.core.config import settings
 from backend.app.api.v1.router import api_v1_router
 from backend.app.api.v1.endpoints import health, predict
+from backend.app.middleware import (
+    RateLimitMiddleware,
+    SecurityHeadersMiddleware,
+    PayloadLimitMiddleware,
+)
 from backend.app.services.risk_service import get_risk_service
 from backend.app.db import close_db_engine
 
@@ -68,7 +73,17 @@ def create_application() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Configure CORS Middleware
+    # Configure Middleware Pipeline (Onion model: outer runs first on request, last on response)
+    # 1. Rate Limiting Middleware (innermost before route handlers)
+    app.add_middleware(RateLimitMiddleware)
+
+    # 2. Request Body Payload Size Limit Middleware
+    app.add_middleware(PayloadLimitMiddleware)
+
+    # 3. Security Response Headers Middleware
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    # 4. CORS Middleware (outermost: handles preflights and attaches CORS headers to all responses)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,

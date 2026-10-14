@@ -6,8 +6,11 @@ fraud intelligence platform using SQLAlchemy 2.0 AsyncSession.
 """
 
 from types import TracebackType
-from typing import Optional, Type
+from typing import AsyncGenerator, Optional, Type
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.app.db.session import get_db_session
 
 from backend.app.repositories.audit_log_repository import AuditLogRepository
 from backend.app.repositories.case_repository import CaseRepository
@@ -17,6 +20,8 @@ from backend.app.repositories.reason_code_repository import ReasonCodeRepository
 from backend.app.repositories.risk_evaluation_repository import RiskEvaluationRepository
 from backend.app.repositories.rule_match_repository import RuleMatchRepository
 from backend.app.repositories.transaction_repository import TransactionRepository
+from backend.app.repositories.user_repository import UserRepository
+from backend.app.repositories.api_key_repository import APIKeyRepository
 
 
 class FraudPersistenceUnitOfWork:
@@ -56,6 +61,8 @@ class FraudPersistenceUnitOfWork:
         self._audit_logs = AuditLogRepository(self._session)
         self._cases = CaseRepository(self._session)
         self._monitoring_snapshots = MonitoringRepository(self._session)
+        self._users = UserRepository(self._session)
+        self._api_keys = APIKeyRepository(self._session)
 
         # Context state tracking
         self._in_context: bool = False
@@ -104,6 +111,16 @@ class FraudPersistenceUnitOfWork:
     def monitoring_snapshots(self) -> MonitoringRepository:
         """ModelMonitoringSnapshot persistence repository."""
         return self._monitoring_snapshots
+
+    @property
+    def users(self) -> UserRepository:
+        """User identity and authorization persistence repository."""
+        return self._users
+
+    @property
+    def api_keys(self) -> APIKeyRepository:
+        """Machine-to-machine API key credentials persistence repository."""
+        return self._api_keys
 
     @property
     def in_context(self) -> bool:
@@ -166,7 +183,18 @@ class FraudPersistenceUnitOfWork:
 # Convenient alias
 UnitOfWork = FraudPersistenceUnitOfWork
 
+
+async def get_unit_of_work(
+    session: AsyncSession = Depends(get_db_session),
+) -> AsyncGenerator[FraudPersistenceUnitOfWork, None]:
+    """
+    FastAPI dependency yielding a FraudPersistenceUnitOfWork bound to the request database session.
+    """
+    yield FraudPersistenceUnitOfWork(session)
+
+
 __all__ = [
     "FraudPersistenceUnitOfWork",
     "UnitOfWork",
+    "get_unit_of_work",
 ]

@@ -526,8 +526,15 @@ def benchmark_monitoring_apis(
         )
     )
 
+    from backend.app.core.security import ActorContext, get_current_actor
+    from backend.app.db.models.enums import AuditActorType
+
     app.dependency_overrides[get_monitoring_service] = lambda: mock_service
     app.dependency_overrides[get_db_session] = lambda: AsyncMock(spec=AsyncSession)
+    app.dependency_overrides[get_current_actor] = lambda: ActorContext(
+        actor_id="benchmark_analyst",
+        actor_role=AuditActorType.ANALYST,
+    )
 
     endpoints = [
         ("GET /api/v1/monitoring/health", "/api/v1/monitoring/health?window=24h"),
@@ -538,6 +545,10 @@ def benchmark_monitoring_apis(
         ("GET /api/v1/monitoring/snapshots", "/api/v1/monitoring/snapshots?limit=20"),
     ]
 
+    from backend.app.core.config import settings
+
+    orig_rate_limit = settings.RATE_LIMIT_ENABLED
+    settings.RATE_LIMIT_ENABLED = False
     try:
         with TestClient(app) as test_client:
             for name, url in endpoints:
@@ -560,6 +571,7 @@ def benchmark_monitoring_apis(
                     f"p95={stats['p95_ms']:6.2f}ms | mean={stats['mean_ms']:6.2f}ms | throughput={stats['ops_per_sec']:6.2f} req/s"
                 )
     finally:
+        settings.RATE_LIMIT_ENABLED = orig_rate_limit
         app.dependency_overrides.clear()
 
     return results

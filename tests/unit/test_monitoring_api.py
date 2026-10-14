@@ -25,6 +25,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.core.config import settings
 from backend.app.db.models.monitoring_snapshot import ModelMonitoringSnapshot
 from backend.app.db.session import get_db_session
 from backend.app.main import app
@@ -361,10 +362,14 @@ class TestMonitoringRESTEndpoints:
         return service
 
     @pytest.fixture
-    def client(self, mock_service) -> TestClient:
+    def client(self, mock_service, monkeypatch) -> TestClient:
+        monkeypatch.setattr(settings, "ALLOW_DEV_ACTOR_HEADERS", True)
         app.dependency_overrides[get_monitoring_service] = lambda: mock_service
         app.dependency_overrides[get_db_session] = lambda: AsyncMock(spec=AsyncSession)
-        with TestClient(app) as test_client:
+        with TestClient(
+            app,
+            headers={"X-Actor-ID": "test_analyst", "X-Actor-Role": "ANALYST"},
+        ) as test_client:
             yield test_client
         app.dependency_overrides.clear()
 

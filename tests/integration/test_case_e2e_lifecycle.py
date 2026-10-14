@@ -698,13 +698,12 @@ async def test_case_rbac_matrix_e2e(
     )
     assert resp.status_code == 403
 
-    # 9. API_CLIENT CAN read case detail -> 200 OK
+    # 9. API_CLIENT cannot read case detail (Analyst/Admin only) -> 403 Forbidden
     resp = await async_e2e_client.get(
         f"/api/v1/cases/{case_id}",
         headers=api_client_headers,
     )
-    assert resp.status_code == 200
-    assert resp.json()["case"]["id"] == str(case_id)
+    assert resp.status_code == 403
 
     # 10. Production Fail-Closed Behavior when ALLOW_DEV_ACTOR_HEADERS=False
     monkeypatch.setattr(settings, "ALLOW_DEV_ACTOR_HEADERS", False)

@@ -45,8 +45,12 @@ target_metadata = Base.metadata
 def get_url() -> str:
     """
     Retrieve the configured asynchronous PostgreSQL database URL.
-    Prefers application settings, with safe fallback to configuration.
+    Prefers active Alembic config override if set, then application settings.
     """
+    if config is not None:
+        cfg_url = config.get_main_option("sqlalchemy.url")
+        if cfg_url and cfg_url.strip():
+            return cfg_url.strip()
     return settings.DATABASE_URL
 
 
@@ -110,8 +114,19 @@ async def run_async_migrations() -> None:
 def run_migrations_online() -> None:
     """
     Run migrations in 'online' mode using the async event loop.
+    Supports running inside an existing event loop (e.g. pytest-asyncio).
     """
-    asyncio.run(run_async_migrations())
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(asyncio.run, run_async_migrations()).result()
+    else:
+        asyncio.run(run_async_migrations())
 
 
 # Execute migration runner when invoked by Alembic command runtime
@@ -120,6 +135,6 @@ try:
         run_migrations_offline()
     else:
         run_migrations_online()
-except (NameError, AttributeError, RuntimeError):
+except (NameError, AttributeError):
     # env.py was imported directly outside of an active Alembic execution context
     pass

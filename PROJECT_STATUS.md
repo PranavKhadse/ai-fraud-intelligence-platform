@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md — Project Tracking & Status Dashboard
 
 > **Platform:** AI-Powered Fraud Detection & Risk Intelligence Platform
-> **Last Updated:** Current Date (Phase 14.5 Implementation Completed)
-> **Current Active Phase:** **Phase 14 — MLOps, Retraining & Model Registry (Subphases 14.1 - 14.5 Completed)**
+> **Last Updated:** Current Date (Phase 15 Security Verification & Audit Report Completed)
+> **Current Active Phase:** **Phase 15 — Security, Auth & Audit Hardening (Completed — Ready for Phase 16)**
 
 ---
 
@@ -25,7 +25,7 @@
 | **Phase 12** | **Human Review & Case Management** | 🟢 **Completed** | Milestone 12 |
 | **Phase 13** | **ML & Model Monitoring** | 🟢 **Completed** | Milestone 13 |
 | **Phase 14** | **MLOps, Retraining & Model Registry** | 🟢 **Completed (14.1–14.6 Completed)** | Milestone 14 |
-| **Phase 15** | **Security, Auth & Audit Logging** | ⚪ Pending | Phase 15 |
+| **Phase 15** | **Security, Auth & Audit Logging** | 🟢 **Completed (15.1–15.7 Completed)** | Milestone 15 |
 | **Phase 16** | **Containerization & Deployment** | ⚪ Pending | Phase 16 |
 | **Phase 17** | **Comprehensive Testing Suite** | ⚪ Pending | Phase 17 |
 | **Phase 18** | **Final Portfolio Polish & Runbooks** | ⚪ Pending | Phase 18 |
@@ -73,6 +73,128 @@
 - [x] Established durable operation journaling state machine (`REQUESTED` $\to$ `VALIDATED` $\to$ `STAGED` $\to$ `FILESYSTEM_SWAPPED` $\to$ `DB_COMMITTED` $\to$ `FINALIZED`).
 - [x] Preserved existing Champion v1.0.0 active status and Candidate v1.1.0 `CANDIDATE` status in production.
 - [x] Authored comprehensive operational runbook in `docs/phase_14_promotion_and_rollback_runbook.md`.
+
+---
+
+## ✅ Phase 15 Deliverable Checklist (Security, Auth & Audit Hardening)
+
+### Phase 15.1: Core Authentication Models, Repositories, Role Isolation & Migration 0006
+- [x] Defined dedicated `UserRole` enum (`ANALYST`, `ADMIN`) and explicit role classification sets (`HUMAN_ROLES`, `MACHINE_ROLES`, `SYSTEM_ROLES`) in `backend/app/db/models/enums.py`.
+- [x] Designed and implemented `User` ORM model (`backend/app/db/models/user.py`) with `UserRole`, `chk_users_role_human` check constraint (`role IN ('ANALYST', 'ADMIN')`), credential hashes, and unique indexes.
+- [x] Designed and implemented `APIKey` ORM model (`backend/app/db/models/api_key.py`) with `chk_api_keys_role_machine` check constraint (`role IN ('API_CLIENT')`), SHA-256 hashed secret index, and foreign key to `users.id`.
+- [x] Extended `AuditLog` ORM model (`backend/app/db/models/audit_log.py`) with nullable `prev_hash` (`String(64)`) and indexed `entry_hash` (`String(64)`) for backward-compatible cryptographic chain verification.
+- [x] Extended `AuditEntityType` enum with `USER = "USER"`, `API_KEY = "API_KEY"`, `MODEL = "MODEL"`.
+- [x] Authored Alembic migration `0006_auth_and_audit_hash_chain.py` enforcing both `chk_users_role_human` and `chk_api_keys_role_machine` constraints, `user_role` enum, widening `alembic_version`, and reversible downgrade DDL.
+- [x] Implemented `UserRepository` and `APIKeyRepository` (`backend/app/repositories/`) with full pagination, filtering, neutrality, and error handling.
+- [x] Integrated `UserRepository` and `APIKeyRepository` into `UnitOfWork` (`backend/app/services/unit_of_work.py`).
+- [x] Added tests proving invalid roles (`SYSTEM`, `API_CLIENT`) are rejected by database check constraints on `users` and invalid roles (`ADMIN`, `ANALYST`, `SYSTEM`) are rejected on `api_keys`.
+- [x] Validated against 715 unit tests (100% pass) and live PostgreSQL upgrade/downgrade migration integration tests.
+
+### Phase 15.2: Authentication Services, Security Utilities & Login Endpoints
+- [x] Implemented bcrypt password hashing and constant-time verification with length constraints (8-72 chars) and corrupt-hash resilience in `backend/app/core/security.py`.
+- [x] Implemented cryptographically secure API key generation (`generate_api_key`) and constant-time SHA-256 verification (`hash_api_key`, `verify_api_key`).
+- [x] Implemented JWT access and refresh token creation, claim encoding, and decode validation (`create_access_token`, `create_refresh_token`, `decode_token`).
+- [x] Enforced strict role isolation: `create_access_token` rejects non-human roles (`SYSTEM`, `API_CLIENT`) with ValueError; human accounts restricted to `ANALYST` and `ADMIN`.
+- [x] Implemented `RefreshTokenRevocationStore` tracking SHA-256 digests of unique JTIs with cryptographic rotation and revocation, preventing replay attacks.
+- [x] Configured authentication settings with safe production validation in `backend/app/core/config.py`, rejecting default/placeholder or short secrets in production.
+- [x] Added `get_unit_of_work` FastAPI dependency in `backend/app/services/unit_of_work.py`.
+- [x] Implemented Pydantic v2 schemas (`backend/app/schemas/auth.py`) for login, refresh, profile, admin user creation, and admin API key creation.
+- [x] Built authentication endpoints in `backend/app/api/v1/endpoints/auth.py` mounted at `/api/v1/auth`:
+  - `POST /login`: Authenticates human user, updates `last_login_at`, returns access & refresh tokens.
+  - `POST /refresh`: Validates refresh token, executes one-time rotation, and revokes old JTI.
+  - `GET /me`: Returns profile of authenticated caller.
+  - `POST /users`: Admin-only endpoint creating analyst/admin users; client-controlled `is_superuser` is strictly ignored (always False).
+  - `POST /api-keys`: Admin-only endpoint creating M2M API keys locked to `API_CLIENT` role; returns unredacted `raw_key` once; persists only SHA-256 hash.
+- [x] Implemented authoritative `get_current_actor` dependency supporting Bearer JWT, `X-API-Key`, and development header fallback.
+- [x] Added 54 focused unit tests (`tests/unit/test_auth_security_utils.py` [27 tests] and `tests/unit/test_auth_endpoints.py` [27 tests]) — 100% passing.
+- [x] Verified zero regressions across entire repository: 769 unit tests passing + live PostgreSQL migration integration tests passing.
+
+### Phase 15.3: RBAC Enforcement on Existing Endpoints
+- [x] Enforced mandatory authentication and role-based access control across prediction, dashboard, monitoring, and case management endpoints.
+- [x] Secured `/api/v1/predict`: permits machine identities (`API_CLIENT`) and human analysts/admins; rejects unauthenticated callers with 401.
+- [x] Secured `/api/v1/dashboard/*` and `/api/v1/monitoring/*`: analyst and admin access only; rejects machine `API_CLIENT` with 403 Forbidden.
+- [x] Secured `/api/v1/cases/*`: analyst and admin access only; machine `API_CLIENT` rejected with 403 Forbidden.
+- [x] Preserved development header fallback (`X-Actor-Id`, `X-Actor-Role`, `X-Actor-Type`) strictly outside production environments when `auth_dev_headers_enabled=True`.
+- [x] Added 21 focused unit tests (`tests/unit/test_rbac_enforcement.py`) covering allowed/denied roles, invalid credentials, and role isolation — 100% passing (790 unit tests total).
+
+### Phase 15.4: Tamper-Evident Audit Logging & Verification
+- [x] Implemented canonical, deterministic JSON serialization and normalization for AuditLog records (`compute_canonical_audit_json`, `normalize_value_for_canonical_json`) with recursive key sorting, UTC ISO-8601 timestamps, UUID/Decimal formatting, and sensitive payload handling.
+- [x] Implemented SHA-256 cryptographic hash chaining (`compute_audit_hash`, `compute_entry_hash_for_entity`) linking new audit records to their canonical predecessor (`prev_hash == prior.entry_hash`, genesis constant `0` * 64).
+- [x] Implemented multi-tier concurrency protection:
+  - Database-level: PostgreSQL transaction advisory lock (`pg_advisory_xact_lock(84920491827491)`) serializing concurrent database transactions writing to the audit log without row locks or deadlocks.
+  - Process-level: `asyncio.Lock()` serializing coroutine execution during hash calculation.
+  - Staged session inspection: `_get_latest_chain_hash()` inspects `self._session.new` to resolve the unspent leaf of the transaction's hash DAG, guaranteeing sequential chaining even across multi-entity transactions before commit.
+- [x] Implemented `AuditIntegrityVerifier` service (`backend/app/services/audit_verifier.py`) providing pure in-memory and database streaming verification.
+  - Detects `INVALID_HASH` (payload, action, actor, timestamp alterations).
+  - Detects `BROKEN_LINK` (severed predecessor hashes).
+  - Detects `MISSING_RECORD` and reordered records.
+  - Detects `GENESIS_MISMATCH` (altered root hash).
+  - Detects `ILLEGAL_UNCHAINED_RECORD` (unchained records injected after chain start).
+  - Detects `DUPLICATE_HASH` (fork or replay attempts).
+- [x] Explicitly handled legacy unchained records (`entry_hash IS NULL`) at chain head, acknowledging them without breaking verification, while flagging post-genesis unchained records as illegal anomalies.
+- [x] Documented formal verification limitations in `AuditVerificationResult.limitations` (legacy records, tail truncation, external anchoring requirements, complete table destruction).
+- [x] Built CLI verification utility (`scripts/verify_audit_integrity.py`) supporting `--limit`, `--json`, and `--verbose` reporting.
+- [x] Authored 24 focused unit tests (`tests/unit/test_audit_hash_chain.py`) covering valid chains, tampering, missing/reordered records, legacy records, and 20-worker concurrent writes — 100% passing.
+- [x] Verified zero regressions across entire repository: 814 unit tests passing (100% pass rate).
+
+### Phase 15.5: Security-Event Auditing & Audit Verification Access
+- [x] Implemented dedicated security audit service (`backend/app/services/security_audit.py`):
+  - `sanitize_audit_payload`: Automatically scrubs sensitive fields and substrings (`password`, `raw_key`, `secret`, `token`, `credential`, `bearer`) recursively across dictionaries and lists.
+  - `record_security_event`: Records security audit entries with mandatory SHA-256 hash chaining via `AuditLogRepository.add`, supporting immediate transaction commits for denial/failure auditing.
+- [x] Instrumented security audit events across authentication endpoints and RBAC dependencies:
+  - `AUTH_LOGIN_SUCCESS`: Authenticated login with username and role.
+  - `AUTH_LOGIN_FAILURE`: Invalid credentials or inactive account login attempts with client IP, correlation ID, and failure reason.
+  - `USER_CREATED`: Administrator-created human user accounts with username, role, and email.
+  - `API_KEY_CREATED`: Administrator-created machine API keys with key name, client ID, prefix, and expiry (raw secret never logged).
+  - `AUTHZ_ACCESS_DENIED`: 403 Forbidden events in `require_role` and `require_admin_user` capturing attempted role, required roles, path, and method.
+  - `AUDIT_VERIFICATION_EXECUTED`: Execution of chain verification audits with limit and verification status.
+- [x] Added authenticated, ADMIN-only audit verification endpoint (`GET /api/v1/audit/verify`) in `backend/app/api/v1/endpoints/audit.py`:
+  - Mounted under `/api/v1/audit` router prefix.
+  - Restricted strictly to callers with the `ADMIN` role (`require_admin_user`). Unauthenticated callers receive 401; analysts and machine clients receive 403 Forbidden.
+  - Executes `AuditIntegrityVerifier.verify_database(session, limit)` and returns structured `AuditVerificationResponse` schemas with validation flags, inspected counts, error details, and standard verification limitations.
+  - Emits chained security audit log for each verification run.
+- [x] Authored 14 focused unit tests (`tests/unit/test_security_audit.py`) covering payload sanitization, security event chaining, auth integration, RBAC denial auditing, and verification endpoint authorization/tampering — 100% passing.
+- [x] Verified zero regressions across all security, auth, RBAC, and case-management suites (92 passing tests).
+
+### Phase 15.6: Rate Limiting & API Hardening
+- [x] Designed and implemented in-memory sliding-window log rate limiting (`InMemoryRateLimiter`, `RateLimitMiddleware` in `backend/app/middleware/rate_limit.py`):
+  - Dedicated login limit: `RATE_LIMIT_LOGIN_PER_MINUTE` (default 10 req/min) keyed on client IP against brute-force attacks.
+  - General API limit: `RATE_LIMIT_API_PER_MINUTE` (default 100 req/min) keyed on API key digest (`apikey:<prefix>`), Bearer token digest (`jwt:<prefix>`), or client IP.
+  - Returns HTTP 429 Too Many Requests with standard IETF headers: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`.
+  - Injects `X-RateLimit-*` quota headers into successful responses.
+  - Exempts documentation and health check endpoints (`/health`, `/api/v1/health`, `/docs`, `/redoc`, `/openapi.json`, `/`).
+  - Asynchronously emits `RATE_LIMIT_EXCEEDED` security audit events into the cryptographic hash chain.
+  - Explicitly documented single-instance limitation: in-memory state is local to single instance; distributed deployments require Redis/Memcached.
+- [x] Implemented anti-spoofing client IP resolution (`get_client_ip`):
+  - When `TRUST_PROXY_HEADERS=False` (default): strictly ignores `X-Forwarded-For` and `X-Real-IP`, binding rate limits to socket peer IP to prevent header-spoofing bypass.
+  - When `TRUST_PROXY_HEADERS=True`: safely extracts original client IP from first segment of `X-Forwarded-For` behind trusted reverse proxies.
+- [x] Implemented defense-in-depth security response headers (`SecurityHeadersMiddleware` in `backend/app/middleware/security_headers.py`):
+  - Injects `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 0`.
+  - Configurable `Content-Security-Policy`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`.
+  - Configurable `Strict-Transport-Security: max-age=31536000; includeSubDomains` (enabled in production or when `SECURITY_HSTS_ENABLED=True`).
+  - Headers attached to all responses, including error responses (401, 403, 413, 429).
+- [x] Enforced safe CORS policy in `backend/app/core/config.py`:
+  - `validate_production_security` fails fast if `CORS_ORIGINS` contains wildcard `'*'` in production (`ValueError: Production Security Violation: Wildcard CORS origin '*' is strictly prohibited in production`).
+  - Permitted wildcard `'*'` only in development environments.
+- [x] Implemented request payload size limiting (`PayloadLimitMiddleware` in `backend/app/middleware/payload_limit.py`):
+  - Rejects oversized requests exceeding `MAX_REQUEST_BODY_BYTES` (default 1MB) with HTTP 413 Content Too Large.
+  - Fast-path inspection on `Content-Length` header; streaming byte accumulator on chunked/missing headers.
+- [x] Verified zero regressions: 109 passing unit tests across entire Phase 15 security and authentication suite.
+
+### Phase 15.7: Final Security Verification & Documentation
+- [x] Executed full unit test suite: **845 passed**, 0 failed across all 54 test suites (100% pass rate).
+- [x] Verified full integration test suite: Alembic migration 0006, predict API persistence, case lifecycle state machine, dashboard overview, monitoring endpoints, model promotion/rollback governance, and benchmarking suite/runner.
+- [x] Resolved genuine edge cases and regressions discovered during verification:
+  - Isolated in-memory rate limiter buckets across tests in `tests/conftest.py`.
+  - Bypassed rate limiting during high-frequency synthetic latency benchmark runs (`scripts/benchmark_monitoring.py`).
+  - Enforced non-wildcard production CORS configuration in settings unit tests.
+  - Dynamically evaluated HSTS configuration in `SecurityHeadersMiddleware`.
+  - Guarded PostgreSQL connection initialization in `_emit_security_audit_event` for test environments lacking active database engines.
+  - Added actor authentication headers to pre-Phase-15 integration test clients (`monitoring`, `predict_persistence`, `benchmarking_suite`, `benchmarking_runner`).
+  - Resolved cross-event-loop `RuntimeError` on module-level `asyncio.Lock` via `_AuditChainLockProxy` and `WeakKeyDictionary`.
+- [x] Authored authoritative security and audit report in `docs/phase_15_security_and_audit_report.md` covering implemented controls, test results, production configuration, and limitations.
+- [x] Clearly documented single-instance in-memory rate-limiting limitation and legacy pre-migration audit log verification boundaries.
+- [x] Formally certified readiness for **Phase 16 — Containerization & Deployment**.
 
 ---
 
@@ -141,12 +263,13 @@
 
 ---
 
-## ⏭ Next Step: Preparation for Phase 15 (Security, Auth & Audit Logging)
+## ⏭ Next Step: Preparation for Phase 15.2 (Authentication Services & Login Endpoints)
 
-When approved to start Phase 15:
-- Implement enterprise authentication and role-based access control (RBAC) across all API endpoints.
-- Enhance audit logging infrastructure with cryptographic chain verification.
-- Implement API rate limiting and DDoS mitigation middleware.
+When approved to start Phase 15.2:
+- Implement password hashing (`passlib`/`bcrypt`) and API key hashing/verification utilities.
+- Implement JWT token generation, claims encoding, and validation (`python-jose`).
+- Configure authentication settings (`JWT_SECRET_KEY`, `JWT_ALGORITHM`, token expirations).
+- Build `/api/v1/auth/*` endpoints (`login`, `refresh`, `me`, `users`, `api-keys`).
 
 ---
 
@@ -378,6 +501,42 @@ When approved to start Phase 15:
   - Created exhaustive E2E integration test suite in `tests/integration/test_case_e2e_lifecycle.py` verifying full multi-turn flows, duplicate creation races, concurrent claims, concurrent dispositions, RBAC security matrix, and ground-truth data contracts.
   - Authored comprehensive documentation in `docs/phase_12_case_management_report.md`.
   - Expanded test suite to **912 total passing tests** with 100% pass rate.
+
+---
+
+## ✅ Phase 15 Deliverable Checklist (Security, Authentication & Audit Hardening)
+
+- [x] **Phase 15.1: Core Authentication Models, Repositories, Audit Hash-Chain Schema & Migration 0006**:
+  - Created SQLAlchemy 2.0 ORM models `User` and `APIKey` with UUID primary keys and timestamp tracking.
+  - Enforced strict database-level check constraints: `role IN ('ANALYST', 'ADMIN')` on `users` and `role IN ('API_CLIENT')` on `api_keys`.
+  - Extended `AuditLog` ORM model with nullable `prev_hash` and `entry_hash` fields for backward-compatible tamper-evident verification.
+  - Implemented migration `0006_auth_and_audit_hash_chain.py` establishing tables, check constraints, uniqueness rules, and lookup indexes.
+  - Implemented `UserRepository` and `APIKeyRepository` adhering to project repository patterns and wired into `FraudPersistenceUnitOfWork`.
+  - Added focused unit and integration test coverage (`test_auth_repositories.py`, `test_auth_migration_integration.py`).
+
+- [x] **Phase 15.2: Authentication Services, Security Utilities & Login Endpoints**:
+  - Implemented constant-time Argon2id password hashing and verification.
+  - Implemented HMAC-SHA256 JWT access and refresh token creation and validation with strict human role enforcement (`HUMAN_ROLES = {"ANALYST", "ADMIN"}`).
+  - Built thread-safe cryptographic `RefreshTokenRevocationStore` tracking rotated/invalidated JTIs.
+  - Implemented secure API-key generation (`pk_live_...`) and constant-time SHA-256 verification.
+  - Implemented authentication REST endpoints under `/api/v1/auth`:
+    - `POST /api/v1/auth/login`: Issue short-lived access and long-lived refresh tokens.
+    - `POST /api/v1/auth/refresh`: Validate refresh token, verify JTI revocation status, and rotate credentials.
+    - `GET /api/v1/auth/me`: Retrieve caller identity and role profile.
+    - `POST /api/v1/auth/register`: Admin-only user account provisioning.
+    - `POST /api/v1/auth/api-keys`: Admin-only machine API key provisioning.
+  - Added focused unit tests in `test_auth_security_utils.py` and `test_auth_endpoints.py`.
+
+- [x] **Phase 15.3: RBAC Enforcement on Existing Endpoints**:
+  - Enforced authentication and role-based access across all operational endpoints:
+    - **Prediction** (`POST /api/v1/predict` and `POST /predict`): requires `API_CLIENT`, `ANALYST`, or `ADMIN`.
+    - **Dashboard** (`/api/v1/dashboard/*`): strictly requires `ANALYST` or `ADMIN`.
+    - **Monitoring** (`/api/v1/monitoring/*`): strictly requires `ANALYST` or `ADMIN`.
+    - **Case Management** (`/api/v1/cases/*`): strictly requires `ANALYST` or `ADMIN`. Removed legacy `API_CLIENT` permission from `get_case` and `get_case_timeline`.
+  - Machine identity (`API_CLIENT`) restriction: machine clients can submit transactions for evaluation, but cannot access case management, analytics dashboards, or model monitoring.
+  - Development header gating: `X-Actor-ID` and `X-Actor-Role` are strictly gated by `ALLOW_DEV_ACTOR_HEADERS` (fails closed with 401 when False).
+  - Status code compliance: returns 401 for unauthenticated requests and 403 for authenticated but unauthorized callers.
+  - Added 21 focused unit tests in `tests/unit/test_rbac_enforcement.py` passing 100% with zero regressions across 790 unit tests.
 
 ---
 

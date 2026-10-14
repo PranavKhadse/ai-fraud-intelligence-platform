@@ -13,6 +13,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend.app.core.config import settings
+from backend.app.core.security import ActorContext, require_role
+from backend.app.db.models.enums import AuditActorType
 from backend.app.repositories.exceptions import PersistenceConflictError, PersistenceError
 from backend.app.schemas.predict import PredictionResponse, TransactionPredictRequest
 from backend.app.services.persistence_service import (
@@ -88,6 +90,9 @@ async def predict_transaction(
     http_request: Request,
     risk_service: RiskService = Depends(get_risk_service),
     persistence_service: FraudPersistenceService = Depends(get_persistence_service),
+    actor: Optional[ActorContext] = Depends(
+        require_role(AuditActorType.API_CLIENT, AuditActorType.ANALYST, AuditActorType.ADMIN)
+    ),
 ) -> PredictionResponse:
     """
     Evaluate fraud risk and return calibrated score, risk tier, action, reason codes, and rule telemetry,
@@ -172,10 +177,16 @@ async def predict_transaction(
     )
     client_ip = extract_client_ip(http_request, trust_proxy_headers=settings.TRUST_PROXY_HEADERS)
 
+    actor_id = (
+        actor.actor_id
+        if isinstance(actor, ActorContext) and actor.actor_id
+        else "fastapi_predict_api"
+    )
+
     context = RiskEvaluationContext(
         correlation_id=correlation_id,
         client_ip=client_ip,
-        actor_id="fastapi_predict_api",
+        actor_id=actor_id,
         evaluation_latency_ms=eval_latency_ms,
         external_transaction_id=ext_tx_id,
         account_id=request.account_id,

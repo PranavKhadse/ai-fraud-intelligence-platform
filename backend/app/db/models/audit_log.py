@@ -85,6 +85,19 @@ class AuditLog(Base, UUIDPrimaryKeyMixin):
         doc="Contextual metadata payload (sanitized of sensitive secrets/credentials).",
     )
 
+    # Cryptographic Hash Chaining (Phase 15 Tamper-Evidence)
+    prev_hash: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="Cryptographic SHA-256 digest of preceding audit log record for tamper-evidence.",
+    )
+    entry_hash: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True,
+        doc="Cryptographic SHA-256 digest of this canonical record including prev_hash.",
+    )
+
     # Timestamps
     event_timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

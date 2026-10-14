@@ -29,19 +29,25 @@ from fastapi.testclient import TestClient
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.core.config import settings
 from backend.app.db.session import get_db_session
 from backend.app.main import app
 from ml.models.config import VAL_FEATURES_PATH
 
 
 @pytest.fixture(scope="function")
-def client(db_session: AsyncSession) -> TestClient:
+def client(db_session: AsyncSession, monkeypatch) -> TestClient:
     """Provide a TestClient instance bound to the active test database session."""
+    monkeypatch.setattr(settings, "ALLOW_DEV_ACTOR_HEADERS", True)
+
     async def override_get_db_session():
         yield db_session
 
     app.dependency_overrides[get_db_session] = override_get_db_session
-    with TestClient(app) as test_client:
+    with TestClient(
+        app,
+        headers={"X-Actor-ID": "test_api_client", "X-Actor-Role": "API_CLIENT"},
+    ) as test_client:
         yield test_client
     app.dependency_overrides.clear()
 

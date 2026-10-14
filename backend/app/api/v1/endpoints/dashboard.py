@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.db.models.enums import DecisionAction, RiskTier
+from backend.app.core.security import require_role
+from backend.app.db.models.enums import AuditActorType, DecisionAction, RiskTier
 from backend.app.db.session import get_db_session
 from backend.app.repositories.dashboard_repository import DashboardRepository
 from backend.app.repositories.exceptions import PersistenceError
@@ -37,7 +38,11 @@ from backend.app.schemas.dashboard import (
 
 logger = logging.getLogger("fraud_api.dashboard")
 
-router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+router = APIRouter(
+    prefix="/dashboard",
+    tags=["Dashboard"],
+    dependencies=[Depends(require_role(AuditActorType.ANALYST, AuditActorType.ADMIN))],
+)
 
 
 def get_dashboard_repository(

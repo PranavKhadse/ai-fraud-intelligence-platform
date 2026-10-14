@@ -9,7 +9,7 @@ and database connection pooling parameters.
 from pathlib import Path
 from typing import List, Optional
 import re
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,6 +53,71 @@ class Settings(BaseSettings):
     ALLOW_DEV_ACTOR_HEADERS: bool = Field(
         default=False,
         description="Allow X-Actor-ID and X-Actor-Role headers in development/test environments.",
+    )
+
+    # API Hardening & Payload Limits (Phase 15.6)
+    MAX_REQUEST_BODY_BYTES: int = Field(
+        default=1_048_576,
+        ge=1024,
+        description="Maximum permitted request body size in bytes (default 1MB).",
+    )
+
+    # Rate Limiting Configuration (Phase 15.6)
+    RATE_LIMIT_ENABLED: bool = Field(
+        default=True,
+        description="Enable or disable in-memory rate limiting across endpoints.",
+    )
+    RATE_LIMIT_LOGIN_PER_MINUTE: int = Field(
+        default=10,
+        ge=1,
+        description="Rate limit for login attempts per client IP per minute.",
+    )
+    RATE_LIMIT_API_PER_MINUTE: int = Field(
+        default=100,
+        ge=1,
+        description="Rate limit for general API requests per client key/IP per minute.",
+    )
+
+    # Security Response Headers Configuration (Phase 15.6)
+    SECURITY_HEADERS_ENABLED: bool = Field(
+        default=True,
+        description="Enable standard security response headers (X-Content-Type-Options, CSP, etc.).",
+    )
+    SECURITY_HSTS_ENABLED: bool = Field(
+        default=False,
+        description="Enable Strict-Transport-Security response header (recommended for production HTTPS).",
+    )
+    SECURITY_CSP_HEADER: str = Field(
+        default="default-src 'self'; frame-ancestors 'none'; object-src 'none'",
+        description="Content-Security-Policy header value.",
+    )
+    SECURITY_REFERRER_POLICY: str = Field(
+        default="strict-origin-when-cross-origin",
+        description="Referrer-Policy header value.",
+    )
+
+    # JWT & Authentication Configuration (Phase 15.2)
+    JWT_SECRET_KEY: str = Field(
+        default="dev-insecure-jwt-secret-key-change-in-production-min-32-chars",
+        description="Cryptographic secret key for signing and verifying JWT tokens.",
+    )
+    JWT_ALGORITHM: str = Field(
+        default="HS256",
+        description="Cryptographic signing algorithm for JWT tokens.",
+    )
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
+        default=30,
+        ge=1,
+        description="Access token lifetime in minutes.",
+    )
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(
+        default=7,
+        ge=1,
+        description="Refresh token lifetime in days.",
+    )
+    API_KEY_PREFIX: str = Field(
+        default="pk_live_",
+        description="Public prefix for issued machine API keys.",
     )
 
 
@@ -149,6 +214,41 @@ class Settings(BaseSettings):
         Return the database URL with masked password for safe logging and telemetry.
         """
         return self._mask_url(self.DATABASE_URL)
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        """
+        Ensure high-entropy secrets and secure configurations in production.
+        Fails fast if production uses placeholder secrets or weak keys.
+        """
+        env_lower = self.ENVIRONMENT.lower().strip()
+        is_production = env_lower in ("production", "prod")
+
+        if is_production:
+            insecure_placeholders = {
+                "dev-insecure-jwt-secret-key-change-in-production-min-32-chars",
+                "secret",
+                "changeme",
+                "password",
+                "123456",
+                "admin",
+            }
+            key_stripped = self.JWT_SECRET_KEY.strip()
+            if key_stripped in insecure_placeholders or len(key_stripped) < 32:
+                raise ValueError(
+                    "Production Security Violation: JWT_SECRET_KEY must be a cryptographically secure, "
+                    "non-default secret of at least 32 characters in production environments."
+                )
+            if self.ALLOW_DEV_ACTOR_HEADERS:
+                raise ValueError(
+                    "Production Security Violation: ALLOW_DEV_ACTOR_HEADERS must be False in production."
+                )
+            if any(origin.strip() == "*" for origin in self.CORS_ORIGINS):
+                raise ValueError(
+                    "Production Security Violation: Wildcard CORS origin '*' is strictly prohibited in production. "
+                    "Explicitly specify permitted origins in CORS_ORIGINS."
+                )
+        return self
 
 
 settings = Settings()
